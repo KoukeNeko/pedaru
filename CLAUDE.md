@@ -20,18 +20,23 @@ npm run tauri build              # Create platform bundles (.dmg, .deb, .msi)
 npm run tauri build -- --debug   # Build with debug symbols
 
 # Testing
-cargo test --verbose             # Run Rust tests
-npm test                         # Run frontend unit tests
+cargo test --verbose             # Run Rust tests (in src-tauri/)
+npm test                         # Run frontend unit tests (Vitest)
+npm run test:ui                  # Run tests with Vitest UI
 npm run test:coverage            # Run tests with coverage report
 npx tsc --noEmit                 # TypeScript type checking
-cargo clippy -- -D warnings      # Rust linting
-cargo fmt -- --check             # Rust formatting check
+cargo clippy -- -D warnings      # Rust linting (in src-tauri/)
+cargo fmt -- --check             # Rust formatting check (in src-tauri/)
 ```
 
 **Test Documentation:**
 - See [TESTING.md](./TESTING.md) for comprehensive testing guide
 - See [TESTING_TABS.md](./TESTING_TABS.md) for manual tab testing checklist
-```
+
+**Test Framework:**
+- Frontend tests use Vitest with jsdom environment
+- Test files are colocated: `src/lib/*.test.ts` next to source files
+- Coverage includes all files in `src/lib/`
 
 ## Architecture
 
@@ -100,6 +105,19 @@ Session saves are debounced (500ms) to avoid excessive writes. The session resto
 - `CustomTextLayer.tsx` - Custom text layer for PDF.js
 - `Settings.tsx` - View mode and settings panel
 
+**Custom Hooks** - `src/hooks/`:
+- `useBookmarks.ts` - Bookmark CRUD operations and cross-window sync
+- `useNavigation.ts` - Page navigation and history management
+- `useSearch.ts` - Full-text search with incremental results
+- `useTabManagement.ts` - Tab creation, deletion, and switching
+- `useWindowManagement.ts` - Standalone window lifecycle management
+- `types.ts` - Shared TypeScript types for hooks
+
+**Utility Libraries** - `src/lib/`:
+- `sessionStorage.ts` - Per-PDF session persistence with localStorage
+- `pdfUtils.ts` - PDF-specific utilities (chapter extraction, etc.)
+- `tabManager.ts` - Tab state management utilities
+
 ### PDF Processing (Rust Backend)
 
 The Rust backend in `src-tauri/src/lib.rs` handles:
@@ -128,13 +146,38 @@ Search can be cancelled by updating `searchIdRef.current`. Results include page 
 
 ### Keyboard Shortcuts
 
-Shortcuts are handled in `page.tsx` via `useEffect` listeners:
+All shortcuts are handled in `page.tsx` via `useEffect` listeners. macOS uses Cmd, Windows/Linux use Ctrl:
 
-- Navigation: Arrow keys, PageUp/PageDown
-- Tabs: Cmd+Shift+[ / Cmd+Shift+]
-- Windows: Cmd+N (new), Cmd+W (close)
-- Tools: Cmd+F (search), Cmd+B (bookmark), Ctrl+, / Ctrl+. (history)
-- Zoom: Cmd/Ctrl +/- and 0
+**Navigation:**
+- `←` / `PageUp` - Previous page
+- `→` / `PageDown` - Next page
+- `Home` - First page (main window only)
+- `End` - Last page (main window only)
+
+**Tabs:**
+- `Cmd/Ctrl+T` - New tab from current page
+- `Cmd/Ctrl+W` - Close current tab
+- `Cmd/Ctrl+Shift+[` - Previous tab (wraps around)
+- `Cmd/Ctrl+Shift+]` - Next tab (wraps around)
+
+**Windows:**
+- `Cmd/Ctrl+N` - Open standalone window (main window only)
+
+**Zoom:**
+- `Cmd/Ctrl++` or `Cmd/Ctrl+=` - Zoom in
+- `Cmd/Ctrl+-` - Zoom out
+- `Cmd/Ctrl+0` - Reset zoom
+
+**Tools:**
+- `Cmd/Ctrl+F` - Focus search
+- `Cmd/Ctrl+B` - Toggle bookmark
+- `Ctrl+,` - Navigate back in history
+- `Ctrl+.` - Navigate forward in history
+
+**Search:**
+- `Enter` - Next search result (when search active)
+- `Shift+Enter` - Previous search result (when search active)
+- `Escape` - Clear search and close results
 
 When adding new shortcuts, register them in the keyboard event handler and ensure they don't conflict with existing ones.
 
@@ -156,11 +199,18 @@ fn my_command() -> Result<Data, String> {
 
 All application state lives in `page.tsx` using React hooks. State is lifted to the top level rather than distributed across components to simplify session serialization.
 
+**Architecture Pattern:**
+- State is defined in `page.tsx` with `useState`
+- Business logic is encapsulated in custom hooks (`src/hooks/`)
+- Custom hooks receive state and setters, return computed values and handlers
+- Components remain presentational, receiving props from `page.tsx`
+
 When adding new stateful features:
 1. Add state to `page.tsx`
-2. Pass as props to components
-3. Add to session storage schema
-4. Include in debounced save logic
+2. Create or update a custom hook in `src/hooks/` for business logic
+3. Pass as props to presentational components
+4. Add to session storage schema in `src/lib/sessionStorage.ts`
+5. Include in debounced save logic in `page.tsx`
 
 ### Logging
 
