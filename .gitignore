@@ -48,3 +48,8 @@ pnpm-debug.log*
 .env.*.local
 
 *.pdf
+
+# Pedaru
+**/.claude/*
+tsconfig.tsbuildinfo
+next-env.d.ts
