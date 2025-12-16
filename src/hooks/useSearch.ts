@@ -17,7 +17,8 @@ import type { SearchResult, ViewMode } from './types';
  * @param showSearchResults - Whether search results panel is visible
  * @param setShowSearchResults - State setter for search results visibility
  * @param totalPages - Total number of pages in PDF
- * @param goToPage - Function to navigate to a specific page
+ * @param goToPage - Function to navigate to a specific page (adds to history)
+ * @param goToPageWithoutHistory - Function to navigate to a specific page (does not add to history)
  * @param isStandaloneMode - Whether running in standalone window
  * @param setViewMode - State setter for view mode (for auto-switching to single page)
  * @returns Search functions and PDF document handler
@@ -35,6 +36,7 @@ export function useSearch(
   setShowSearchResults: Dispatch<SetStateAction<boolean>>,
   totalPages: number,
   goToPage: (page: number) => void,
+  goToPageWithoutHistory: (page: number) => void,
   isStandaloneMode: boolean,
   setViewMode: Dispatch<SetStateAction<ViewMode>>
 ) {
@@ -191,6 +193,62 @@ export function useSearch(
   ]);
 
   /**
+   * Preview next search result without adding to history
+   * Wraps around to first result after last
+   */
+  const handleSearchNextPreview = useCallback(() => {
+    if (searchResults.length === 0) return;
+    const nextIndex = (currentSearchIndex + 1) % searchResults.length;
+    setCurrentSearchIndex(nextIndex);
+    // Switch to single page mode only in standalone window
+    if (isStandaloneMode) {
+      setViewMode('single');
+    }
+    goToPageWithoutHistory(searchResults[nextIndex].page);
+  }, [
+    searchResults,
+    currentSearchIndex,
+    goToPageWithoutHistory,
+    isStandaloneMode,
+    setCurrentSearchIndex,
+    setViewMode,
+  ]);
+
+  /**
+   * Preview previous search result without adding to history
+   * Wraps around to last result before first
+   */
+  const handleSearchPrevPreview = useCallback(() => {
+    if (searchResults.length === 0) return;
+    const prevIndex = (currentSearchIndex - 1 + searchResults.length) % searchResults.length;
+    setCurrentSearchIndex(prevIndex);
+    // Switch to single page mode only in standalone window
+    if (isStandaloneMode) {
+      setViewMode('single');
+    }
+    goToPageWithoutHistory(searchResults[prevIndex].page);
+  }, [
+    searchResults,
+    currentSearchIndex,
+    goToPageWithoutHistory,
+    isStandaloneMode,
+    setCurrentSearchIndex,
+    setViewMode,
+  ]);
+
+  /**
+   * Confirm current search result and add to history
+   * Closes the search results panel
+   */
+  const handleSearchConfirm = useCallback(() => {
+    if (searchResults.length === 0) return;
+    // Add current page to history
+    goToPage(searchResults[currentSearchIndex].page);
+    // Close search results panel
+    setShowSearchResults(false);
+  }, [searchResults, currentSearchIndex, goToPage, setShowSearchResults]);
+
+  /**
    * Store PDF document reference for search operations
    * Called by PdfViewer when document loads
    */
@@ -203,6 +261,9 @@ export function useSearch(
     handleSearchChange,
     handleSearchNext,
     handleSearchPrev,
+    handleSearchNextPreview,
+    handleSearchPrevPreview,
+    handleSearchConfirm,
     handlePdfDocumentLoad,
   };
 }

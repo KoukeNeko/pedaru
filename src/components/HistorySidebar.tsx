@@ -1,5 +1,7 @@
 'use client';
 
+import { useRef, useEffect } from 'react';
+
 interface HistoryEntry {
   page: number;
   timestamp: string;
@@ -14,9 +16,21 @@ interface HistorySidebarProps {
 }
 
 export default function HistorySidebar({ history, index, currentPage, onSelect, onClear }: HistorySidebarProps) {
+  const activeItemRef = useRef<HTMLLIElement>(null);
   const items = [...history].reverse(); // newest first
+
+  // Auto-scroll to current page when currentPage or index changes
+  useEffect(() => {
+    if (activeItemRef.current) {
+      activeItemRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+      });
+    }
+  }, [currentPage, index]);
+
   return (
-    <aside className={`w-64 shrink-0 border-r border-bg-tertiary bg-bg-secondary overflow-auto`}> 
+    <aside className={`w-64 shrink-0 border-r border-bg-tertiary bg-bg-secondary overflow-auto`}>
       <div className="flex items-center justify-between px-3 py-2 border-b border-bg-tertiary">
         <span className="text-sm font-medium text-text-primary">History</span>
         {onClear && (
@@ -27,7 +41,10 @@ export default function HistorySidebar({ history, index, currentPage, onSelect, 
         {items.map((entry, i) => {
           const originalIndex = history.length - 1 - i;
           return (
-            <li key={`${originalIndex}-${entry.page}-${entry.timestamp}`}>
+            <li
+              key={`${originalIndex}-${entry.page}-${entry.timestamp}`}
+              ref={entry.page === currentPage ? activeItemRef : null}
+            >
             <button
               className={`w-full text-left px-2 py-1 rounded transition-colors ${
                 entry.page === currentPage ? 'bg-bg-tertiary text-text-primary' : 'hover:bg-bg-tertiary text-text-secondary'

@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef, useEffect } from 'react';
 import { ExternalLink, X, Loader2 } from 'lucide-react';
 
 export interface SearchResult {
@@ -29,6 +30,18 @@ export default function SearchResultsSidebar({
   onOpenInWindow,
   onClose,
 }: SearchResultsSidebarProps) {
+  const activeItemRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to current search result when currentIndex changes
+  useEffect(() => {
+    if (activeItemRef.current) {
+      activeItemRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+      });
+    }
+  }, [currentIndex]);
+
   if (!query) {
     return null;
   }
@@ -74,6 +87,7 @@ export default function SearchResultsSidebar({
           results.map((result, index) => (
             <div
               key={`${result.page}-${result.matchIndex}`}
+              ref={index === currentIndex ? activeItemRef : null}
               className={`px-4 py-3 border-b border-bg-tertiary cursor-pointer transition-colors hover:bg-bg-tertiary ${
                 index === currentIndex ? 'bg-accent/20 border-l-2 border-l-accent' : ''
               }`}

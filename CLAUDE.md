@@ -175,8 +175,9 @@ All shortcuts are handled in `page.tsx` via `useEffect` listeners. macOS uses Cm
 - `Ctrl+.` - Navigate forward in history
 
 **Search:**
-- `Enter` - Next search result (when search active)
-- `Shift+Enter` - Previous search result (when search active)
+- `↑` - Preview previous search result (when search active, does not add to history)
+- `↓` - Preview next search result (when search active, does not add to history)
+- `Enter` - Confirm current search result and add to history
 - `Escape` - Clear search and close results
 
 When adding new shortcuts, register them in the keyboard event handler and ensure they don't conflict with existing ones.

@@ -119,6 +119,10 @@ export default function Header({
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder="Search..."
               disabled={!isPdfLoaded}
+              autoCapitalize="off"
+              autoCorrect="off"
+              autoComplete="off"
+              spellCheck="false"
               className="w-40 pl-8 pr-8 py-1.5 bg-bg-tertiary border border-bg-hover rounded-lg text-sm text-text-primary placeholder-text-secondary focus:outline-none focus:border-accent disabled:opacity-40"
             />
             {searchQuery && (

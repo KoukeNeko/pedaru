@@ -125,6 +125,7 @@ export default function Home() {
   const {
     navigateToPageWithoutTabUpdate,
     goToPage,
+    goToPageWithoutHistory,
     goToPrevPage,
     goToNextPage,
     goBack,
@@ -165,6 +166,9 @@ export default function Home() {
     handleSearchChange,
     handleSearchNext,
     handleSearchPrev,
+    handleSearchNextPreview,
+    handleSearchPrevPreview,
+    handleSearchConfirm,
     handlePdfDocumentLoad,
   } = useSearch(
     searchQuery,
@@ -179,6 +183,7 @@ export default function Home() {
     setShowSearchResults,
     totalPages,
     goToPage,
+    goToPageWithoutHistory,
     isStandaloneMode,
     setViewMode
   );
@@ -690,6 +695,20 @@ export default function Home() {
       if (!totalPages) return;
 
       switch (e.key) {
+        case 'ArrowUp':
+          // If search results are active, preview previous result
+          if (searchQuery && searchResults.length > 0) {
+            e.preventDefault();
+            handleSearchPrevPreview();
+          }
+          break;
+        case 'ArrowDown':
+          // If search results are active, preview next result
+          if (searchQuery && searchResults.length > 0) {
+            e.preventDefault();
+            handleSearchNextPreview();
+          }
+          break;
         case 'ArrowLeft':
         case 'PageUp':
           e.preventDefault();
@@ -767,6 +786,10 @@ export default function Home() {
                 searchInput.focus();
                 searchInput.select();
               }
+              // If there's a search query, show the results panel
+              if (searchQuery && searchResults.length > 0) {
+                setShowSearchResults(true);
+              }
             }
           }
           break;
@@ -778,14 +801,10 @@ export default function Home() {
           }
           break;
         case 'Enter':
-          // Navigate search results when search is active
+          // Confirm search result when search is active
           if (searchQuery && searchResults.length > 0) {
             e.preventDefault();
-            if (e.shiftKey) {
-              handleSearchPrev();
-            } else {
-              handleSearchNext();
-            }
+            handleSearchConfirm();
           }
           break;
         case 'Escape':
@@ -842,7 +861,7 @@ export default function Home() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentPage, totalPages, goToPage, goToPrevPage, goToNextPage, handleZoomIn, handleZoomOut, handleZoomReset, isStandaloneMode, searchQuery, searchResults, handleSearchNext, handleSearchPrev, showSearchResults, closeCurrentTab, addTabFromCurrent, toggleBookmark, tabs, activeTabId, selectTab, openStandaloneWindow, goBack, goForward, historyIndex, pageHistory]);
+  }, [currentPage, totalPages, goToPage, goToPrevPage, goToNextPage, handleZoomIn, handleZoomOut, handleZoomReset, isStandaloneMode, searchQuery, searchResults, handleSearchNextPreview, handleSearchPrevPreview, handleSearchConfirm, showSearchResults, closeCurrentTab, addTabFromCurrent, toggleBookmark, tabs, activeTabId, selectTab, openStandaloneWindow, goBack, goForward, historyIndex, pageHistory]);
 
   // Update document title
   useEffect(() => {

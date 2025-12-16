@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Bookmark as BookmarkIcon, Trash2, ArrowUpDown } from 'lucide-react';
 
 export interface Bookmark {
@@ -37,6 +37,7 @@ export default function BookmarkSidebar({
   onClear,
 }: BookmarkSidebarProps) {
   const [sortMode, setSortMode] = useState<SortMode>('date');
+  const activeItemRef = useRef<HTMLLIElement>(null);
 
   // Sort based on mode
   const sortedBookmarks = [...bookmarks].sort((a, b) => {
@@ -46,6 +47,16 @@ export default function BookmarkSidebar({
       return a.page - b.page; // Page order
     }
   });
+
+  // Auto-scroll to current page bookmark when currentPage changes
+  useEffect(() => {
+    if (activeItemRef.current) {
+      activeItemRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+      });
+    }
+  }, [currentPage]);
 
   return (
     <aside className="w-64 shrink-0 border-r border-bg-tertiary bg-bg-secondary overflow-auto">
@@ -77,7 +88,11 @@ export default function BookmarkSidebar({
       </div>
       <ul className="p-2 space-y-1">
         {sortedBookmarks.map((bookmark) => (
-          <li key={bookmark.page} className="group">
+          <li
+            key={bookmark.page}
+            className="group"
+            ref={bookmark.page === currentPage ? activeItemRef : null}
+          >
             <div
               className={`flex items-center justify-between w-full text-left px-2 py-1.5 rounded transition-colors ${
                 bookmark.page === currentPage

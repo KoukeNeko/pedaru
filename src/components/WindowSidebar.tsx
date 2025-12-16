@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef, useEffect } from 'react';
 import { ViewMode } from '@/components/Settings';
 
 interface WindowEntry {
@@ -19,6 +20,18 @@ interface WindowSidebarProps {
 }
 
 export default function WindowSidebar({ windows, currentPage, onFocus, onClose, onMoveToTab }: WindowSidebarProps) {
+  const activeItemRef = useRef<HTMLLIElement>(null);
+
+  // Auto-scroll to active window when currentPage changes
+  useEffect(() => {
+    if (activeItemRef.current) {
+      activeItemRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+      });
+    }
+  }, [currentPage]);
+
   return (
     <aside className="w-80 bg-bg-secondary border-r border-bg-tertiary flex flex-col flex-shrink-0 overflow-hidden">
       <div className="p-4 border-b border-bg-tertiary flex items-center justify-between">
@@ -30,6 +43,7 @@ export default function WindowSidebar({ windows, currentPage, onFocus, onClose, 
         {windows.map((w) => (
           <li
             key={w.label}
+            ref={w.page === currentPage ? activeItemRef : null}
             draggable
             onDragStart={(e) => {
               e.dataTransfer.effectAllowed = 'move';

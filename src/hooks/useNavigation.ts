@@ -90,6 +90,55 @@ export function useNavigation(
   );
 
   /**
+   * Navigate to a specific page without adding to history
+   * Used for previewing search results
+   */
+  const goToPageWithoutHistory = useCallback(
+    (page: number) => {
+      if (page >= 1 && page <= totalPages) {
+        setCurrentPage(page);
+
+        // If in standalone mode, update window title and emit event to main window
+        if (isStandaloneMode) {
+          const win = getCurrentWebviewWindow();
+          // Update native window title
+          const chapter = getChapterForPage(page);
+          const title = chapter ? `${chapter} (Page ${page})` : `Page ${page}`;
+
+          // Update both document.title and native window title
+          document.title = title;
+          win.setTitle(title).catch(console.warn);
+
+          emit('window-page-changed', {
+            label: win.label,
+            page,
+          }).catch(console.warn);
+        }
+
+        // Update active tab's page and label to match current page
+        setTabs((prev) =>
+          prev.map((tab) => {
+            if (tab.id === activeTabId) {
+              const chapter = getChapterForPage(page);
+              const label = chapter ? `P${page}: ${chapter}` : `Page ${page}`;
+              return { ...tab, page, label };
+            }
+            return tab;
+          })
+        );
+      }
+    },
+    [
+      totalPages,
+      activeTabId,
+      isStandaloneMode,
+      getChapterForPage,
+      setCurrentPage,
+      setTabs,
+    ]
+  );
+
+  /**
    * Navigate to a specific page
    * Updates tabs, history, and emits events for standalone windows
    */
@@ -273,6 +322,7 @@ export function useNavigation(
   return {
     navigateToPageWithoutTabUpdate,
     goToPage,
+    goToPageWithoutHistory,
     goToPrevPage,
     goToNextPage,
     goBack,
