@@ -1423,6 +1423,8 @@ export default function Home() {
             viewMode={viewMode}
             filePath={filePath}
             searchQuery={searchQuery}
+            focusedSearchPage={searchResults[currentSearchIndex]?.page}
+            focusedSearchMatchIndex={searchResults[currentSearchIndex]?.matchIndex}
             bookmarkedPages={bookmarks.map(b => b.page)}
             onToggleBookmark={(page) => {
               const existingIndex = bookmarks.findIndex((b) => b.page === page);

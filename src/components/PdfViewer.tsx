@@ -20,6 +20,7 @@ interface PageWithCustomTextLayerProps {
   pageNumber: number;
   scale: number;
   searchQuery?: string;
+  focusedMatchIndex?: number;
   pdfDocument: pdfjs.PDFDocumentProxy | null;
   bookmarkedPages: number[];
   onToggleBookmark?: (page: number) => void;
@@ -29,6 +30,7 @@ function PageWithCustomTextLayer({
   pageNumber,
   scale,
   searchQuery,
+  focusedMatchIndex,
   pdfDocument,
   bookmarkedPages,
   onToggleBookmark,
@@ -89,6 +91,7 @@ function PageWithCustomTextLayer({
           page={pdfPage}
           scale={scale}
           searchQuery={searchQuery}
+          focusedMatchIndex={focusedMatchIndex}
         />
       )}
       {/* Bookmark button */}
@@ -120,6 +123,8 @@ interface PdfViewerProps {
   filePath: string | null;
   openedPages?: Set<number>;
   searchQuery?: string;
+  focusedSearchPage?: number;
+  focusedSearchMatchIndex?: number;
   bookmarkedPages?: number[];
   onToggleBookmark?: (page: number) => void;
   onLoadSuccess: (numPages: number) => void;
@@ -135,6 +140,8 @@ export default function PdfViewer({
   viewMode,
   filePath,
   searchQuery,
+  focusedSearchPage,
+  focusedSearchMatchIndex,
   bookmarkedPages = [],
   onToggleBookmark,
   onLoadSuccess,
@@ -482,6 +489,7 @@ export default function PdfViewer({
           pageNumber={leftPage}
           scale={scale}
           searchQuery={searchQuery}
+          focusedMatchIndex={leftPage === focusedSearchPage ? focusedSearchMatchIndex : undefined}
           pdfDocument={pdfDocument}
           bookmarkedPages={bookmarkedPages}
           onToggleBookmark={onToggleBookmark}
@@ -493,6 +501,7 @@ export default function PdfViewer({
             pageNumber={rightPage}
             scale={scale}
             searchQuery={searchQuery}
+            focusedMatchIndex={rightPage === focusedSearchPage ? focusedSearchMatchIndex : undefined}
             pdfDocument={pdfDocument}
             bookmarkedPages={bookmarkedPages}
             onToggleBookmark={onToggleBookmark}

@@ -25,9 +25,10 @@ interface CustomTextLayerProps {
   page: pdfjsLib.PDFPageProxy;
   scale: number;
   searchQuery?: string;
+  focusedMatchIndex?: number; // Which match on this page is currently focused (0-indexed)
 }
 
-export default function CustomTextLayer({ page, scale, searchQuery }: CustomTextLayerProps) {
+export default function CustomTextLayer({ page, scale, searchQuery, focusedMatchIndex }: CustomTextLayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const textSpanRefs = useRef<Map<number, HTMLSpanElement>>(new Map());
   const [processedItems, setProcessedItems] = useState<ProcessedTextItem[]>([]);
@@ -167,42 +168,60 @@ export default function CustomTextLayer({ page, scale, searchQuery }: CustomText
         pointerEvents: 'auto',
       }}
     >
-      {processedItems.map((item, index) => {
-        const { tx, fontSize, angle, targetWidth } = item;
-        const scaleX = scaleXValues.get(index) || 1;
+      {(() => {
+        // Track global match index across all text items on this page
+        let globalMatchIndex = 0;
 
-        // Highlight search matches if searchQuery is provided
-        let content: React.ReactNode = item.str;
-        if (searchQuery) {
-          const lowerText = item.str.toLowerCase();
-          const lowerQuery = searchQuery.toLowerCase();
-          if (lowerText.includes(lowerQuery)) {
-            const parts: React.ReactNode[] = [];
-            let lastIndex = 0;
-            let matchIndex = lowerText.indexOf(lowerQuery);
-            let partKey = 0;
+        return processedItems.map((item, index) => {
+          const { tx, fontSize, angle, targetWidth } = item;
+          const scaleX = scaleXValues.get(index) || 1;
 
-            while (matchIndex !== -1) {
-              if (matchIndex > lastIndex) {
+          // Highlight search matches if searchQuery is provided
+          let content: React.ReactNode = item.str;
+          if (searchQuery) {
+            const lowerText = item.str.toLowerCase();
+            const lowerQuery = searchQuery.toLowerCase();
+            if (lowerText.includes(lowerQuery)) {
+              const parts: React.ReactNode[] = [];
+              let lastIndex = 0;
+              let matchIndex = lowerText.indexOf(lowerQuery);
+              let partKey = 0;
+
+              while (matchIndex !== -1) {
+                if (matchIndex > lastIndex) {
+                  parts.push(
+                    <span key={partKey++}>{item.str.slice(lastIndex, matchIndex)}</span>
+                  );
+                }
+
+                // Check if this match is the focused one
+                const isFocused = focusedMatchIndex !== undefined && globalMatchIndex === focusedMatchIndex;
+                globalMatchIndex++;
+
                 parts.push(
-                  <span key={partKey++}>{item.str.slice(lastIndex, matchIndex)}</span>
+                  <mark
+                    key={partKey++}
+                    style={isFocused ? {
+                      background: 'rgba(255, 100, 100, 0.7)',
+                      color: 'red',
+                      fontWeight: 'bold',
+                    } : {
+                      background: 'rgba(255, 255, 0, 0.4)',
+                    }}
+                  >
+                    {item.str.slice(matchIndex, matchIndex + searchQuery.length)}
+                  </mark>
                 );
+                lastIndex = matchIndex + searchQuery.length;
+                matchIndex = lowerText.indexOf(lowerQuery, lastIndex);
               }
-              parts.push(
-                <mark key={partKey++} style={{ background: 'rgba(255, 255, 0, 0.4)' }}>
-                  {item.str.slice(matchIndex, matchIndex + searchQuery.length)}
-                </mark>
-              );
-              lastIndex = matchIndex + searchQuery.length;
-              matchIndex = lowerText.indexOf(lowerQuery, lastIndex);
-            }
 
-            if (lastIndex < item.str.length) {
-              parts.push(<span key={partKey++}>{item.str.slice(lastIndex)}</span>);
+              if (lastIndex < item.str.length) {
+                parts.push(<span key={partKey++}>{item.str.slice(lastIndex)}</span>);
+              }
+              content = parts;
             }
-            content = parts;
           }
-        }
 
         // Build transform string with scaleX and rotation
         const transforms: string[] = [`scaleX(${scaleX})`];
@@ -222,17 +241,18 @@ export default function CustomTextLayer({ page, scale, searchQuery }: CustomText
           transform: transforms.join(' '),
         };
 
-        return (
-          <span
-            key={index}
-            ref={(el) => setSpanRef(index, el)}
-            style={style}
-            data-target-width={targetWidth}
-          >
-            {content}
-          </span>
-        );
-      })}
+          return (
+            <span
+              key={index}
+              ref={(el) => setSpanRef(index, el)}
+              style={style}
+              data-target-width={targetWidth}
+            >
+              {content}
+            </span>
+          );
+        });
+      })()}
     </div>
   );
 }

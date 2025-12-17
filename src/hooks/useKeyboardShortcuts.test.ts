@@ -26,11 +26,16 @@ describe('useKeyboardShortcuts', () => {
     selectTab: (tabId: number) => void;
     toggleBookmark: () => void;
     openStandaloneWindow: (page: number) => void;
+    toggleHeader: () => void;
+    setShowHeader: (value: boolean | ((prev: boolean) => boolean)) => void;
+    showHeaderTemporarily: () => void;
   };
 
   let mockTabs: Tab[];
   let mockSearchResults: SearchResult[];
   let mockStandaloneSearchInputRef: { current: HTMLInputElement | null };
+  let mockHeaderWasHiddenBeforeSearchRef: { current: boolean };
+  let mockShowHeader: boolean;
 
   beforeEach(() => {
     mockHandlers = {
@@ -54,6 +59,9 @@ describe('useKeyboardShortcuts', () => {
       selectTab: vi.fn(),
       toggleBookmark: vi.fn(),
       openStandaloneWindow: vi.fn(),
+      toggleHeader: vi.fn(),
+      setShowHeader: vi.fn(),
+      showHeaderTemporarily: vi.fn(),
     };
 
     mockTabs = [
@@ -66,6 +74,8 @@ describe('useKeyboardShortcuts', () => {
     ];
 
     mockStandaloneSearchInputRef = { current: null };
+    mockHeaderWasHiddenBeforeSearchRef = { current: false };
+    mockShowHeader = true;
   });
 
   afterEach(() => {
@@ -86,6 +96,8 @@ describe('useKeyboardShortcuts', () => {
           standaloneSearchInputRef: mockStandaloneSearchInputRef,
           tabs: mockTabs,
           activeTabId: 1,
+          showHeader: mockShowHeader,
+          headerWasHiddenBeforeSearchRef: mockHeaderWasHiddenBeforeSearchRef,
         })
       );
 
@@ -109,6 +121,8 @@ describe('useKeyboardShortcuts', () => {
           standaloneSearchInputRef: mockStandaloneSearchInputRef,
           tabs: mockTabs,
           activeTabId: 1,
+          showHeader: mockShowHeader,
+          headerWasHiddenBeforeSearchRef: mockHeaderWasHiddenBeforeSearchRef,
         })
       );
 
@@ -131,6 +145,8 @@ describe('useKeyboardShortcuts', () => {
           standaloneSearchInputRef: mockStandaloneSearchInputRef,
           tabs: mockTabs,
           activeTabId: 1,
+          showHeader: mockShowHeader,
+          headerWasHiddenBeforeSearchRef: mockHeaderWasHiddenBeforeSearchRef,
         })
       );
 
@@ -153,6 +169,8 @@ describe('useKeyboardShortcuts', () => {
           standaloneSearchInputRef: mockStandaloneSearchInputRef,
           tabs: mockTabs,
           activeTabId: 1,
+          showHeader: mockShowHeader,
+          headerWasHiddenBeforeSearchRef: mockHeaderWasHiddenBeforeSearchRef,
         })
       );
 
@@ -175,6 +193,8 @@ describe('useKeyboardShortcuts', () => {
           standaloneSearchInputRef: mockStandaloneSearchInputRef,
           tabs: mockTabs,
           activeTabId: 1,
+          showHeader: mockShowHeader,
+          headerWasHiddenBeforeSearchRef: mockHeaderWasHiddenBeforeSearchRef,
         })
       );
 
@@ -199,6 +219,8 @@ describe('useKeyboardShortcuts', () => {
           standaloneSearchInputRef: mockStandaloneSearchInputRef,
           tabs: mockTabs,
           activeTabId: 1,
+          showHeader: mockShowHeader,
+          headerWasHiddenBeforeSearchRef: mockHeaderWasHiddenBeforeSearchRef,
         })
       );
 
@@ -221,6 +243,8 @@ describe('useKeyboardShortcuts', () => {
           standaloneSearchInputRef: mockStandaloneSearchInputRef,
           tabs: mockTabs,
           activeTabId: 1,
+          showHeader: mockShowHeader,
+          headerWasHiddenBeforeSearchRef: mockHeaderWasHiddenBeforeSearchRef,
         })
       );
 
@@ -243,6 +267,8 @@ describe('useKeyboardShortcuts', () => {
           standaloneSearchInputRef: mockStandaloneSearchInputRef,
           tabs: mockTabs,
           activeTabId: 1,
+          showHeader: mockShowHeader,
+          headerWasHiddenBeforeSearchRef: mockHeaderWasHiddenBeforeSearchRef,
         })
       );
 
@@ -267,6 +293,8 @@ describe('useKeyboardShortcuts', () => {
           standaloneSearchInputRef: mockStandaloneSearchInputRef,
           tabs: mockTabs,
           activeTabId: 1,
+          showHeader: mockShowHeader,
+          headerWasHiddenBeforeSearchRef: mockHeaderWasHiddenBeforeSearchRef,
         })
       );
 
@@ -289,6 +317,8 @@ describe('useKeyboardShortcuts', () => {
           standaloneSearchInputRef: mockStandaloneSearchInputRef,
           tabs: mockTabs,
           activeTabId: 1,
+          showHeader: mockShowHeader,
+          headerWasHiddenBeforeSearchRef: mockHeaderWasHiddenBeforeSearchRef,
         })
       );
 
@@ -311,6 +341,8 @@ describe('useKeyboardShortcuts', () => {
           standaloneSearchInputRef: mockStandaloneSearchInputRef,
           tabs: mockTabs,
           activeTabId: 1,
+          showHeader: mockShowHeader,
+          headerWasHiddenBeforeSearchRef: mockHeaderWasHiddenBeforeSearchRef,
         })
       );
 
@@ -365,6 +397,8 @@ describe('useKeyboardShortcuts', () => {
           standaloneSearchInputRef: mockStandaloneSearchInputRef,
           tabs: mockTabs,
           activeTabId: 1,
+          showHeader: mockShowHeader,
+          headerWasHiddenBeforeSearchRef: mockHeaderWasHiddenBeforeSearchRef,
         })
       );
 
@@ -387,6 +421,8 @@ describe('useKeyboardShortcuts', () => {
           standaloneSearchInputRef: mockStandaloneSearchInputRef,
           tabs: mockTabs,
           activeTabId: 1,
+          showHeader: mockShowHeader,
+          headerWasHiddenBeforeSearchRef: mockHeaderWasHiddenBeforeSearchRef,
         })
       );
 
@@ -409,6 +445,8 @@ describe('useKeyboardShortcuts', () => {
           standaloneSearchInputRef: mockStandaloneSearchInputRef,
           tabs: mockTabs,
           activeTabId: 1,
+          showHeader: mockShowHeader,
+          headerWasHiddenBeforeSearchRef: mockHeaderWasHiddenBeforeSearchRef,
         })
       );
 
@@ -435,6 +473,8 @@ describe('useKeyboardShortcuts', () => {
           standaloneSearchInputRef: mockStandaloneSearchInputRef,
           tabs: mockTabs,
           activeTabId: 1,
+          showHeader: mockShowHeader,
+          headerWasHiddenBeforeSearchRef: mockHeaderWasHiddenBeforeSearchRef,
         })
       );
 
@@ -459,6 +499,8 @@ describe('useKeyboardShortcuts', () => {
           standaloneSearchInputRef: mockStandaloneSearchInputRef,
           tabs: mockTabs,
           activeTabId: 1,
+          showHeader: mockShowHeader,
+          headerWasHiddenBeforeSearchRef: mockHeaderWasHiddenBeforeSearchRef,
         })
       );
 
@@ -481,6 +523,8 @@ describe('useKeyboardShortcuts', () => {
           standaloneSearchInputRef: mockStandaloneSearchInputRef,
           tabs: mockTabs,
           activeTabId: 1,
+          showHeader: mockShowHeader,
+          headerWasHiddenBeforeSearchRef: mockHeaderWasHiddenBeforeSearchRef,
         })
       );
 
@@ -505,6 +549,8 @@ describe('useKeyboardShortcuts', () => {
           standaloneSearchInputRef: mockStandaloneSearchInputRef,
           tabs: mockTabs,
           activeTabId: 1,
+          showHeader: mockShowHeader,
+          headerWasHiddenBeforeSearchRef: mockHeaderWasHiddenBeforeSearchRef,
         })
       );
 
@@ -527,6 +573,8 @@ describe('useKeyboardShortcuts', () => {
           standaloneSearchInputRef: mockStandaloneSearchInputRef,
           tabs: mockTabs,
           activeTabId: 1,
+          showHeader: mockShowHeader,
+          headerWasHiddenBeforeSearchRef: mockHeaderWasHiddenBeforeSearchRef,
         })
       );
 
@@ -551,6 +599,8 @@ describe('useKeyboardShortcuts', () => {
           standaloneSearchInputRef: mockStandaloneSearchInputRef,
           tabs: mockTabs,
           activeTabId: 1,
+          showHeader: mockShowHeader,
+          headerWasHiddenBeforeSearchRef: mockHeaderWasHiddenBeforeSearchRef,
         })
       );
 
