@@ -62,6 +62,7 @@ export function useKeyboardShortcuts({
   showHeader,
   setShowHeader,
   headerWasHiddenBeforeSearchRef,
+  showHeaderTemporarily,
 }: {
   // Navigation
   currentPage: number;
@@ -111,6 +112,7 @@ export function useKeyboardShortcuts({
   showHeader: boolean;
   setShowHeader: Dispatch<SetStateAction<boolean>>;
   headerWasHiddenBeforeSearchRef: React.RefObject<boolean>;
+  showHeaderTemporarily: () => void;
 }) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -177,6 +179,7 @@ export function useKeyboardShortcuts({
           if (e.metaKey || e.ctrlKey) {
             e.preventDefault();
             addTabFromCurrent();
+            showHeaderTemporarily();
           }
           break;
         case 'n':
@@ -229,6 +232,7 @@ export function useKeyboardShortcuts({
           if (e.metaKey || e.ctrlKey) {
             e.preventDefault();
             closeCurrentTab();
+            showHeaderTemporarily();
           }
           break;
         case 'Enter':
@@ -277,6 +281,7 @@ export function useKeyboardShortcuts({
               // Wrap to last tab
               selectTab(tabs[tabs.length - 1].id);
             }
+            showHeaderTemporarily();
           }
           break;
         case ']':
@@ -289,6 +294,30 @@ export function useKeyboardShortcuts({
             } else {
               // Wrap to first tab
               selectTab(tabs[0].id);
+            }
+            showHeaderTemporarily();
+          }
+          break;
+        case '1':
+        case '2':
+        case '3':
+        case '4':
+        case '5':
+        case '6':
+        case '7':
+        case '8':
+        case '9':
+          // Cmd/Ctrl+1-9 - switch to tab by number (main window only)
+          if ((e.metaKey || e.ctrlKey) && !isStandaloneMode && tabs.length > 0) {
+            e.preventDefault();
+            const tabIndex = parseInt(e.key) - 1;
+            // Cmd/Ctrl+9 goes to last tab if there are more than 9 tabs
+            if (e.key === '9' && tabs.length > 9) {
+              selectTab(tabs[tabs.length - 1].id);
+              showHeaderTemporarily();
+            } else if (tabIndex < tabs.length) {
+              selectTab(tabs[tabIndex].id);
+              showHeaderTemporarily();
             }
           }
           break;
@@ -330,5 +359,6 @@ export function useKeyboardShortcuts({
     toggleHeader,
     showHeader,
     setShowHeader,
+    showHeaderTemporarily,
   ]);
 }

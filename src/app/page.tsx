@@ -80,6 +80,8 @@ export default function Home() {
   const [activeTabId, setActiveTabId] = useState<number | null>(null);
   const tabIdRef = useRef<number>(1);
   const headerWasHiddenBeforeSearchRef = useRef<boolean>(false);
+  const tempShowHeaderRef = useRef<boolean>(false);
+  const headerTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Keep filePathRef in sync with filePath state
   useEffect(() => {
@@ -289,6 +291,31 @@ export default function Home() {
     setShowHeader((prev) => !prev);
   }, []);
 
+  const showHeaderTemporarily = useCallback(() => {
+    // If header is permanently shown by user (not temp), don't auto-hide
+    if (showHeader && !tempShowHeaderRef.current) {
+      return;
+    }
+
+    // Show header temporarily if not already shown
+    if (!showHeader) {
+      tempShowHeaderRef.current = true;
+      setShowHeader(true);
+    }
+
+    // Clear any existing timer and reset
+    if (headerTimerRef.current) {
+      clearTimeout(headerTimerRef.current);
+    }
+
+    // Hide after 2 seconds of no tab operations
+    headerTimerRef.current = setTimeout(() => {
+      tempShowHeaderRef.current = false;
+      setShowHeader(false);
+      headerTimerRef.current = null;
+    }, 2000);
+  }, [showHeader]);
+
   // Initialize keyboard shortcuts
   useKeyboardShortcuts({
     currentPage,
@@ -324,6 +351,7 @@ export default function Home() {
     showHeader,
     setShowHeader,
     headerWasHiddenBeforeSearchRef,
+    showHeaderTemporarily,
   });
 
   // Note: loadPdfFromPathInternal and loadPdfFromPath now provided by usePdfLoader hook
@@ -992,7 +1020,7 @@ export default function Home() {
       )}
 
       {/* Tabs bar - shows when tabs exist OR when windows exist (for drop target) */}
-      {!isStandaloneMode && (tabs.length > 0 || openWindows.length > 0) && (
+      {!isStandaloneMode && showHeader && (tabs.length > 0 || openWindows.length > 0) && (
         <div
           className="flex items-center gap-2 px-4 py-2 bg-bg-secondary border-b border-bg-tertiary min-h-[44px] overflow-x-auto scrollbar-thin scrollbar-thumb-bg-tertiary scrollbar-track-transparent"
           onDragOver={(e) => {
