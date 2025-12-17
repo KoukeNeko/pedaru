@@ -4,7 +4,8 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { invoke } from '@tauri-apps/api/core';
 import { emit, listen } from '@tauri-apps/api/event';
-import { open, confirm } from '@tauri-apps/plugin-dialog';
+import { open, confirm, save } from '@tauri-apps/plugin-dialog';
+import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs';
 import Header from '@/components/Header';
 import { Columns, History, PanelTop, Bookmark as BookmarkIcon, Search, X, List, Loader2 } from 'lucide-react';
 import { getCurrentWebviewWindow, WebviewWindow, getAllWebviewWindows } from '@tauri-apps/api/webviewWindow';
@@ -29,11 +30,13 @@ import {
   saveSessionState,
   loadSessionState,
   getLastOpenedPath,
-  migrateOldStorage,
+  getAllSessions,
+  importSessions,
+  getRecentFiles,
   TabState,
   WindowState,
   PdfSessionState,
-} from '@/lib/sessionStorage';
+} from '@/lib/database';
 import { getChapterForPage as getChapter } from '@/lib/pdfUtils';
 import { useBookmarks } from '@/hooks/useBookmarks';
 import { useNavigation } from '@/hooks/useNavigation';
@@ -53,6 +56,7 @@ export default function Home() {
   const [fileData, setFileData] = useState<Uint8Array | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [filePath, setFilePath] = useState<string | null>(null);
+  const filePathRef = useRef<string | null>(null);
   const [pdfInfo, setPdfInfo] = useState<PdfInfo | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
@@ -74,6 +78,11 @@ export default function Home() {
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeTabId, setActiveTabId] = useState<number | null>(null);
   const tabIdRef = useRef<number>(1);
+
+  // Keep filePathRef in sync with filePath state
+  useEffect(() => {
+    filePathRef.current = filePath;
+  }, [filePath]);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -403,6 +412,116 @@ export default function Home() {
       setViewMode((prev) => (prev === 'two-column' ? 'single' : 'two-column'));
     }).then(fn => { if (mounted) unlisteners.push(fn); }).catch(() => {});
 
+    listen('export-session-data-requested', async () => {
+      if (!mounted) return;
+
+      try {
+        // Get all sessions from database
+        const sessions = await getAllSessions();
+
+        // Prepare export data
+        const exportData = {
+          exportDate: new Date().toISOString(),
+          version: '1.0',
+          sessions: sessions,
+        };
+
+        // Show save dialog
+        const filePath = await save({
+          title: 'Export Session Data',
+          defaultPath: `pedaru-sessions-${new Date().toISOString().split('T')[0]}.json`,
+          filters: [{
+            name: 'JSON',
+            extensions: ['json']
+          }]
+        });
+
+        if (filePath) {
+          // Write the data to file
+          const jsonString = JSON.stringify(exportData, null, 2);
+          await writeTextFile(filePath, jsonString);
+
+          console.log('Session data exported successfully to:', filePath);
+        }
+      } catch (error) {
+        console.error('Failed to export session data:', error);
+      }
+    }).then(fn => { if (mounted) unlisteners.push(fn); }).catch(() => {});
+
+    listen('import-session-data-requested', async () => {
+      if (!mounted) return;
+
+      try {
+        // Show file open dialog
+        const filePath = await open({
+          title: 'Import Session Data',
+          multiple: false,
+          filters: [{
+            name: 'JSON',
+            extensions: ['json']
+          }]
+        });
+
+        if (!filePath) {
+          // User cancelled
+          return;
+        }
+
+        // Read the file
+        const jsonString = await readTextFile(filePath as string);
+
+        // Parse and validate JSON
+        const importData = JSON.parse(jsonString);
+
+        if (!importData.version || !Array.isArray(importData.sessions)) {
+          throw new Error('Invalid session data format');
+        }
+
+        // Import sessions
+        const importCount = await importSessions(importData.sessions);
+
+        // Show success dialog
+        await confirm(
+          `Successfully imported ${importCount} session(s).`,
+          { title: 'Import Complete', kind: 'info' }
+        );
+
+        console.log('Session data imported successfully:', importCount);
+      } catch (error) {
+        console.error('Failed to import session data:', error);
+
+        // Show error dialog
+        await confirm(
+          `Failed to import session data: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          { title: 'Import Failed', kind: 'error' }
+        );
+      }
+    }).then(fn => { if (mounted) unlisteners.push(fn); }).catch(() => {});
+
+    listen('menu-open-file-requested', async () => {
+      if (!mounted) return;
+      await handleOpenFile();
+    }).then(fn => { if (mounted) unlisteners.push(fn); }).catch(() => {});
+
+    listen('menu-open-recent-selected', async (event: any) => {
+      if (!mounted) return;
+
+      try {
+        // Event payload now contains the file path directly (not an index)
+        const selectedFilePath = event.payload as string;
+
+        // Don't reload if it's the same file that's already open
+        if (selectedFilePath === filePathRef.current) {
+          console.log('File already open, skipping reload');
+          return;
+        }
+
+        await loadPdfFromPath(selectedFilePath);
+      } catch (error) {
+        console.error('Failed to open recent file:', error);
+      }
+    }).then(fn => { if (mounted) unlisteners.push(fn); }).catch(() => {});
+
     return () => {
       mounted = false;
       unlisteners.forEach(fn => { try { fn(); } catch {} });
@@ -500,14 +619,11 @@ export default function Home() {
         console.error('Error checking opened file:', e);
       }
 
-      // Migrate old storage format if present
-      migrateOldStorage();
-
-      // Try to load last opened PDF using new session storage
+      // Try to load last opened PDF using database
       const lastPath = getLastOpenedPath();
       if (lastPath) {
         console.log('Loading last opened PDF:', lastPath);
-        const session = loadSessionState(lastPath);
+        const session = await loadSessionState(lastPath);
 
         // Reset pdfInfo before loading new PDF
         setPdfInfo(null);
@@ -632,7 +748,10 @@ export default function Home() {
         pageHistory: savedHistory,
         historyIndex: Math.min(adjustedHistoryIndex, savedHistory.length - 1),
       };
-      saveSessionState(filePath, state);
+      // Save to database (async, fire and forget)
+      saveSessionState(filePath, state).catch((error) => {
+        console.error('Failed to save session state:', error);
+      });
     }, 500);
   }, [filePath, isStandaloneMode, currentPage, zoom, viewMode, tabs, activeTabId, openWindows, bookmarks, pageHistory, historyIndex]);
 

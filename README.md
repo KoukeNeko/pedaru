@@ -41,6 +41,18 @@ AI-enhanced PDF reader
 - **Internal Links**: Click TOC/index links to navigate within document
 - **External Links**: URLs open in system web browser
 
+### 💾 Session Persistence
+- **SQLite Database**: All session data stored in local SQLite database
+- **Auto-Save**: Page position, zoom, bookmarks, tabs, and windows saved automatically
+- **Cross-Session**: Resume exactly where you left off when reopening PDFs
+- **Export**: Export all session data as JSON (Pedaru → Export Session Data...)
+- **Open Recent**: Quick access to recently opened PDFs from File → Open Recent menu
+
+### 🔖 Bookmarks
+- **Add Bookmarks**: Use Cmd+B (macOS) / Ctrl+B (Windows/Linux) to bookmark current page
+- **Bookmark Sidebar**: View and manage all bookmarks
+- **Cross-Window Sync**: Bookmarks sync across all windows
+
 ## Keyboard Shortcuts
 
 | Action | macOS | Windows/Linux |
@@ -61,6 +73,7 @@ AI-enhanced PDF reader
 - **Frontend**: React, Next.js, TypeScript, Tailwind CSS
 - **Desktop**: Tauri 2.x (Rust)
 - **PDF Rendering**: react-pdf (PDF.js)
+- **Database**: SQLite (via tauri-plugin-sql)
 
 ## Development
 

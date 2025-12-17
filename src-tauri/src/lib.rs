@@ -1,10 +1,23 @@
 use encoding_rs::SHIFT_JIS;
 use lopdf::Document;
-use serde::Serialize;
+use rusqlite::Connection;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use std::fs;
+use std::path::PathBuf;
+use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::Emitter;
 use tauri::Manager;
+use tauri_plugin_sql::Builder as SqlBuilder;
+
+mod db_schema;
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct RecentFile {
+    name: String,
+    file_path: String,
+    last_opened: i64,
+}
 
 #[derive(Debug, Serialize)]
 pub struct TocEntry {
@@ -525,6 +538,277 @@ fn was_opened_via_event() -> bool {
     OPENED_VIA_EVENT.load(Ordering::SeqCst)
 }
 
+/// Get the path to the SQLite database
+fn get_db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+
+    // Create directory if it doesn't exist
+    if !app_data_dir.exists() {
+        fs::create_dir_all(&app_data_dir)
+            .map_err(|e| format!("Failed to create app data dir: {}", e))?;
+    }
+
+    Ok(app_data_dir.join("pedaru.db"))
+}
+
+/// Load recent files from SQLite database
+/// Excludes the currently open file from the results
+fn load_recent_files(app: &tauri::AppHandle, exclude_path: Option<&str>) -> Vec<RecentFile> {
+    match get_db_path(app) {
+        Ok(db_path) => {
+            if !db_path.exists() {
+                eprintln!(
+                    "[Pedaru] Database not found at {:?}, returning empty list",
+                    db_path
+                );
+                return Vec::new();
+            }
+
+            match Connection::open(&db_path) {
+                Ok(conn) => {
+                    let query = if let Some(exclude) = exclude_path {
+                        format!(
+                            "SELECT file_path, name, last_opened FROM sessions
+                             WHERE file_path != '{}'
+                             ORDER BY last_opened DESC LIMIT 10",
+                            exclude.replace("'", "''")
+                        )
+                    } else {
+                        "SELECT file_path, name, last_opened FROM sessions
+                         ORDER BY last_opened DESC LIMIT 10"
+                            .to_string()
+                    };
+
+                    match conn.prepare(&query) {
+                        Ok(mut stmt) => {
+                            let files_iter = stmt.query_map([], |row| {
+                                Ok(RecentFile {
+                                    file_path: row.get(0)?,
+                                    name: row.get(1)?,
+                                    last_opened: row.get(2)?,
+                                })
+                            });
+
+                            match files_iter {
+                                Ok(files) => files.filter_map(|f| f.ok()).collect(),
+                                Err(e) => {
+                                    eprintln!("[Pedaru] Failed to query recent files: {}", e);
+                                    Vec::new()
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("[Pedaru] Failed to prepare query: {}", e);
+                            Vec::new()
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[Pedaru] Failed to open database: {}", e);
+                    Vec::new()
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("[Pedaru] Failed to get database path: {}", e);
+            Vec::new()
+        }
+    }
+}
+
+/// Build the application menu with recent files
+fn build_app_menu(app: &tauri::AppHandle) -> Result<Menu<tauri::Wry>, Box<dyn std::error::Error>> {
+    // Create app menu items
+    let reset_item = MenuItem::with_id(
+        app,
+        "reset_all_data",
+        "Initialize App...",
+        true,
+        None::<&str>,
+    )?;
+
+    let export_item = MenuItem::with_id(
+        app,
+        "export_session_data",
+        "Export Session Data...",
+        true,
+        None::<&str>,
+    )?;
+
+    let import_item = MenuItem::with_id(
+        app,
+        "import_session_data",
+        "Import Session Data...",
+        true,
+        None::<&str>,
+    )?;
+
+    // File menu items
+    let open_file_item = MenuItem::with_id(app, "open_file", "Open...", true, Some("CmdOrCtrl+O"))?;
+
+    // Open Recent submenu - load from SQLite database
+    let recent_files = load_recent_files(app, None);
+
+    // Build menu items dynamically
+    let mut recent_items = Vec::new();
+
+    for file in recent_files.iter().take(10) {
+        // Extract filename from path for fallback
+        let filename = std::path::Path::new(&file.file_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("Unknown")
+            .to_string();
+
+        // Format: "/path/to/file.pdf - Title" or "/path/to/file.pdf - filename.pdf"
+        let display_name = if file.name.is_empty() {
+            filename
+        } else {
+            file.name.clone()
+        };
+        let menu_text = format!("{} - {}", file.file_path, display_name);
+
+        // Encode file path in base64 to use as menu item ID
+        use base64::{engine::general_purpose, Engine as _};
+        let encoded_path = general_purpose::STANDARD.encode(file.file_path.as_bytes());
+
+        let item = MenuItem::with_id(
+            app,
+            format!("open-recent-{}", encoded_path),
+            &menu_text,
+            true,
+            None::<&str>,
+        )?;
+        recent_items.push(item);
+    }
+
+    // If no recent files, show "No Recent Files"
+    if recent_items.is_empty() {
+        let no_recent = MenuItem::with_id(
+            app,
+            "no-recent-files",
+            "No Recent Files",
+            false,
+            None::<&str>,
+        )?;
+        recent_items.push(no_recent);
+    }
+
+    // Collect references as trait objects
+    let recent_item_refs: Vec<&dyn IsMenuItem<_>> = recent_items
+        .iter()
+        .map(|item| item as &dyn IsMenuItem<_>)
+        .collect();
+
+    let open_recent_submenu = Submenu::with_items(app, "Open Recent", true, &recent_item_refs)?;
+
+    let file_submenu =
+        Submenu::with_items(app, "File", true, &[&open_file_item, &open_recent_submenu])?;
+
+    let app_submenu = Submenu::with_items(
+        app,
+        "Pedaru",
+        true,
+        &[
+            &PredefinedMenuItem::about(app, Some("About Pedaru"), None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &reset_item,
+            &import_item,
+            &export_item,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::services(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::hide(app, None)?,
+            &PredefinedMenuItem::hide_others(app, None)?,
+            &PredefinedMenuItem::show_all(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::quit(app, None)?,
+        ],
+    )?;
+
+    let edit_submenu = Submenu::with_items(
+        app,
+        "Edit",
+        true,
+        &[
+            &PredefinedMenuItem::undo(app, None)?,
+            &PredefinedMenuItem::redo(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::cut(app, None)?,
+            &PredefinedMenuItem::copy(app, None)?,
+            &PredefinedMenuItem::paste(app, None)?,
+            &PredefinedMenuItem::select_all(app, None)?,
+        ],
+    )?;
+
+    // View menu with Zoom and Two-Column options
+    let zoom_in = MenuItem::with_id(app, "zoom_in", "Zoom In", true, Some("CmdOrCtrl+="))?;
+    let zoom_out = MenuItem::with_id(app, "zoom_out", "Zoom Out", true, Some("CmdOrCtrl+-"))?;
+    let zoom_reset = MenuItem::with_id(app, "zoom_reset", "Reset Zoom", true, Some("CmdOrCtrl+0"))?;
+    let toggle_two_column = MenuItem::with_id(
+        app,
+        "toggle_two_column",
+        "Two-Column Mode",
+        true,
+        Some("CmdOrCtrl+Shift+2"),
+    )?;
+
+    let view_submenu = Submenu::with_items(
+        app,
+        "View",
+        true,
+        &[
+            &zoom_in,
+            &zoom_out,
+            &zoom_reset,
+            &PredefinedMenuItem::separator(app)?,
+            &toggle_two_column,
+        ],
+    )?;
+
+    let window_submenu = Submenu::with_items(
+        app,
+        "Window",
+        true,
+        &[
+            &PredefinedMenuItem::minimize(app, None)?,
+            &PredefinedMenuItem::maximize(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::close_window(app, None)?,
+        ],
+    )?;
+
+    let menu = Menu::with_items(
+        app,
+        &[
+            &app_submenu,
+            &file_submenu,
+            &edit_submenu,
+            &view_submenu,
+            &window_submenu,
+        ],
+    )?;
+
+    Ok(menu)
+}
+
+/// Tauri command to refresh the recent files menu
+#[tauri::command]
+fn refresh_recent_menu(app: tauri::AppHandle) -> Result<(), String> {
+    eprintln!("[Pedaru] Refreshing recent files menu");
+    let menu = build_app_menu(&app).map_err(|e| format!("Failed to build menu: {}", e))?;
+    app.set_menu(menu)
+        .map_err(|e| format!("Failed to set menu: {}", e))?;
+    eprintln!("[Pedaru] Recent files menu refreshed successfully");
+    Ok(())
+}
+
+// Note: Database operations are handled directly from the frontend using tauri-plugin-sql
+// The plugin provides SQL query functionality via JavaScript/TypeScript
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Check for CLI arguments first (before building the app)
@@ -544,104 +828,29 @@ pub fn run() {
         }
     }
 
+    // Initialize SQLite database with migrations
+    let migrations = db_schema::get_migrations();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(
+            SqlBuilder::default()
+                .add_migrations("sqlite:pedaru.db", migrations)
+                .build(),
+        )
         .invoke_handler(tauri::generate_handler![
             greet,
             get_pdf_info,
             read_pdf_file,
             get_opened_file,
-            was_opened_via_event
+            was_opened_via_event,
+            refresh_recent_menu
         ])
         .setup(|app| {
-            // Create app menu
-            let reset_item = MenuItem::with_id(
-                app,
-                "reset_all_data",
-                "Initialize App...",
-                true,
-                None::<&str>,
-            )?;
-
-            let app_submenu = Submenu::with_items(
-                app,
-                "Pedaru",
-                true,
-                &[
-                    &PredefinedMenuItem::about(app, Some("About Pedaru"), None)?,
-                    &PredefinedMenuItem::separator(app)?,
-                    &reset_item,
-                    &PredefinedMenuItem::separator(app)?,
-                    &PredefinedMenuItem::services(app, None)?,
-                    &PredefinedMenuItem::separator(app)?,
-                    &PredefinedMenuItem::hide(app, None)?,
-                    &PredefinedMenuItem::hide_others(app, None)?,
-                    &PredefinedMenuItem::show_all(app, None)?,
-                    &PredefinedMenuItem::separator(app)?,
-                    &PredefinedMenuItem::quit(app, None)?,
-                ],
-            )?;
-
-            let edit_submenu = Submenu::with_items(
-                app,
-                "Edit",
-                true,
-                &[
-                    &PredefinedMenuItem::undo(app, None)?,
-                    &PredefinedMenuItem::redo(app, None)?,
-                    &PredefinedMenuItem::separator(app)?,
-                    &PredefinedMenuItem::cut(app, None)?,
-                    &PredefinedMenuItem::copy(app, None)?,
-                    &PredefinedMenuItem::paste(app, None)?,
-                    &PredefinedMenuItem::select_all(app, None)?,
-                ],
-            )?;
-
-            // View menu with Zoom and Two-Column options
-            let zoom_in = MenuItem::with_id(app, "zoom_in", "Zoom In", true, Some("CmdOrCtrl+="))?;
-            let zoom_out =
-                MenuItem::with_id(app, "zoom_out", "Zoom Out", true, Some("CmdOrCtrl+-"))?;
-            let zoom_reset =
-                MenuItem::with_id(app, "zoom_reset", "Reset Zoom", true, Some("CmdOrCtrl+0"))?;
-            let toggle_two_column = MenuItem::with_id(
-                app,
-                "toggle_two_column",
-                "Two-Column Mode",
-                true,
-                Some("CmdOrCtrl+Shift+2"),
-            )?;
-
-            let view_submenu = Submenu::with_items(
-                app,
-                "View",
-                true,
-                &[
-                    &zoom_in,
-                    &zoom_out,
-                    &zoom_reset,
-                    &PredefinedMenuItem::separator(app)?,
-                    &toggle_two_column,
-                ],
-            )?;
-
-            let window_submenu = Submenu::with_items(
-                app,
-                "Window",
-                true,
-                &[
-                    &PredefinedMenuItem::minimize(app, None)?,
-                    &PredefinedMenuItem::maximize(app, None)?,
-                    &PredefinedMenuItem::separator(app)?,
-                    &PredefinedMenuItem::close_window(app, None)?,
-                ],
-            )?;
-
-            let menu = Menu::with_items(
-                app,
-                &[&app_submenu, &edit_submenu, &view_submenu, &window_submenu],
-            )?;
+            // Build and set the initial menu
+            let menu = build_app_menu(app.handle()).map_err(|e| e.to_string())?;
             app.set_menu(menu)?;
 
             Ok(())
@@ -652,6 +861,29 @@ pub fn run() {
                 "reset_all_data" => {
                     // Emit event to frontend to show confirmation dialog
                     app.emit("reset-all-data-requested", ()).ok();
+                }
+                "export_session_data" => {
+                    // Emit event to frontend to handle export
+                    app.emit("export-session-data-requested", ()).ok();
+                }
+                "import_session_data" => {
+                    // Emit event to frontend to handle import
+                    app.emit("import-session-data-requested", ()).ok();
+                }
+                "open_file" => {
+                    // Emit event to frontend to open file dialog
+                    app.emit("menu-open-file-requested", ()).ok();
+                }
+                id if id.starts_with("open-recent-") => {
+                    // Extract base64-encoded path from "open-recent-{base64}"
+                    if let Some(encoded_path) = id.strip_prefix("open-recent-") {
+                        use base64::{engine::general_purpose, Engine as _};
+                        if let Ok(decoded_bytes) = general_purpose::STANDARD.decode(encoded_path) {
+                            if let Ok(file_path) = String::from_utf8(decoded_bytes) {
+                                app.emit("menu-open-recent-selected", file_path).ok();
+                            }
+                        }
+                    }
                 }
                 "zoom_in" => {
                     app.emit("menu-zoom-in", ()).ok();

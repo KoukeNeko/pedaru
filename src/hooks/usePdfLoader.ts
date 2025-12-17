@@ -1,7 +1,7 @@
 import { useCallback, Dispatch, SetStateAction } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
-import { loadSessionState } from '@/lib/sessionStorage';
+import { loadSessionState } from '@/lib/database';
 import type {
   PdfInfo,
   OpenWindow,
@@ -121,10 +121,6 @@ export function usePdfLoader({
       console.log('=== loadPdfFromPath called ===');
       console.log('Path argument:', path);
 
-      // Immediately update last opened path so it's not confused with old files
-      localStorage.setItem('pedaru_last_opened_path', path);
-      console.log('Updated last_opened_path in localStorage');
-
       // Reset all state immediately when opening a new PDF
       setPdfInfo(null); // Clear old PDF info (including ToC)
       setCurrentPage(1);
@@ -153,7 +149,8 @@ export function usePdfLoader({
       const success = await loadPdfInternal(path, false);
       if (success) {
         // Check if there's a saved session for this PDF
-        const session = loadSessionState(path);
+        // Note: Recent files list is automatically updated via saveSessionState in database.ts
+        const session = await loadSessionState(path);
         if (session) {
           // Restore session state
           setCurrentPage(session.page || 1);
@@ -183,6 +180,13 @@ export function usePdfLoader({
           }
         } else {
           // No saved session - defaults already set at start of loadPdfFromPath
+        }
+
+        // Refresh the Open Recents menu after loading a new PDF
+        try {
+          await invoke('refresh_recent_menu');
+        } catch (error) {
+          console.error('Failed to refresh recent menu:', error);
         }
       }
     },
