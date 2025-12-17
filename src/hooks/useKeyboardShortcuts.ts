@@ -56,6 +56,12 @@ export function useKeyboardShortcuts({
 
   // Windows
   openStandaloneWindow,
+
+  // Header toggle
+  toggleHeader,
+  showHeader,
+  setShowHeader,
+  headerWasHiddenBeforeSearchRef,
 }: {
   // Navigation
   currentPage: number;
@@ -99,6 +105,12 @@ export function useKeyboardShortcuts({
 
   // Windows
   openStandaloneWindow: (page: number) => void;
+
+  // Header toggle
+  toggleHeader: () => void;
+  showHeader: boolean;
+  setShowHeader: Dispatch<SetStateAction<boolean>>;
+  headerWasHiddenBeforeSearchRef: React.RefObject<boolean>;
 }) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -185,11 +197,20 @@ export function useKeyboardShortcuts({
         case 'F':
           if (e.metaKey || e.ctrlKey) {
             e.preventDefault();
-            if (isStandaloneMode) {
+            // Cmd/Ctrl+Shift+F - toggle header visibility (main window only)
+            if (e.shiftKey && !isStandaloneMode) {
+              toggleHeader();
+            } else if (isStandaloneMode) {
               // Toggle standalone search
               setShowStandaloneSearch(true);
               setTimeout(() => standaloneSearchInputRef.current?.focus(), 0);
             } else {
+              // Cmd/Ctrl+F - search
+              // If header is hidden, show it and remember the state
+              if (!showHeader) {
+                headerWasHiddenBeforeSearchRef.current = true;
+                setShowHeader(true);
+              }
               // Focus search input in main window
               const searchInput = document.querySelector('input[placeholder="Search..."]') as HTMLInputElement;
               if (searchInput) {
@@ -224,6 +245,11 @@ export function useKeyboardShortcuts({
             setSearchQuery('');
             setSearchResults([]);
             setShowSearchResults(false);
+            // If header was hidden before search, restore that state
+            if (headerWasHiddenBeforeSearchRef.current) {
+              setShowHeader(false);
+              headerWasHiddenBeforeSearchRef.current = false;
+            }
           }
           break;
         case ',':
@@ -301,5 +327,8 @@ export function useKeyboardShortcuts({
     openStandaloneWindow,
     goBack,
     goForward,
+    toggleHeader,
+    showHeader,
+    setShowHeader,
   ]);
 }

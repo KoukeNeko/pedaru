@@ -73,11 +73,13 @@ export default function Home() {
   const [showHistory, setShowHistory] = useState(false);
   const [showWindows, setShowWindows] = useState(false);
   const [showBookmarks, setShowBookmarks] = useState(false);
+  const [showHeader, setShowHeader] = useState(true);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [sidebarWidth, setSidebarWidth] = useState(320);
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeTabId, setActiveTabId] = useState<number | null>(null);
   const tabIdRef = useRef<number>(1);
+  const headerWasHiddenBeforeSearchRef = useRef<boolean>(false);
 
   // Keep filePathRef in sync with filePath state
   useEffect(() => {
@@ -283,6 +285,10 @@ export default function Home() {
     setZoom(1.0);
   }, []);
 
+  const handleToggleHeader = useCallback(() => {
+    setShowHeader((prev) => !prev);
+  }, []);
+
   // Initialize keyboard shortcuts
   useKeyboardShortcuts({
     currentPage,
@@ -314,6 +320,10 @@ export default function Home() {
     selectTab,
     toggleBookmark,
     openStandaloneWindow,
+    toggleHeader: handleToggleHeader,
+    showHeader,
+    setShowHeader,
+    headerWasHiddenBeforeSearchRef,
   });
 
   // Note: loadPdfFromPathInternal and loadPdfFromPath now provided by usePdfLoader hook
@@ -945,7 +955,7 @@ export default function Home() {
 
   return (
     <main className="flex flex-col h-screen bg-bg-primary relative group">
-      {!isStandaloneMode && (
+      {!isStandaloneMode && showHeader && (
         <Header
           fileName={fileName}
           pdfTitle={pdfInfo?.title || null}
