@@ -437,6 +437,7 @@ export default function PdfViewer({
   return (
     <div
       ref={containerRef}
+      id="pdf-viewer-container"
       className="flex-1 bg-bg-primary overflow-auto"
     >
       <div

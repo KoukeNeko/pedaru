@@ -316,14 +316,32 @@ export function useKeyboardShortcuts({
             showHeaderTemporarily();
           }
           break;
-        case '2':
-          // Cmd/Ctrl+2 - toggle two-column view mode (main window only)
+        case '\\':
+          // Cmd/Ctrl+\ - toggle two-column view mode (main window only)
           if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !isStandaloneMode) {
             e.preventDefault();
             toggleTwoColumn();
           }
           break;
+        case 'a':
+        case 'A':
+          // Cmd/Ctrl+A - select all text in PDF viewer only
+          if (e.metaKey || e.ctrlKey) {
+            e.preventDefault();
+            const pdfContainer = document.getElementById('pdf-viewer-container');
+            if (pdfContainer) {
+              const selection = window.getSelection();
+              if (selection) {
+                selection.removeAllRanges();
+                const range = document.createRange();
+                range.selectNodeContents(pdfContainer);
+                selection.addRange(range);
+              }
+            }
+          }
+          break;
         case '1':
+        case '2':
         case '3':
         case '4':
         case '5':
@@ -331,8 +349,7 @@ export function useKeyboardShortcuts({
         case '7':
         case '8':
         case '9':
-          // Cmd/Ctrl+1,3-9 - switch to tab by number (main window only)
-          // Note: Cmd/Ctrl+2 is reserved for two-column toggle
+          // Cmd/Ctrl+1-9 - switch to tab by number (main window only)
           if ((e.metaKey || e.ctrlKey) && !isStandaloneMode && tabs.length > 0) {
             e.preventDefault();
             const tabIndex = parseInt(e.key) - 1;

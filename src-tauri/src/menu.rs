@@ -151,7 +151,7 @@ fn build_app_menu_internal(app: &tauri::AppHandle) -> anyhow::Result<Menu<tauri:
         "toggle_two_column",
         "Two-Column Mode",
         true,
-        Some(&shortcut("2")),
+        Some(&shortcut("\\")),
     )?;
     let toggle_header = MenuItem::with_id(
         app,

@@ -244,7 +244,7 @@ All shortcuts are handled in `page.tsx` via `useEffect` listeners. macOS uses Cm
 - `Cmd/Ctrl+0` - Reset zoom
 
 **View:**
-- `Cmd/Ctrl+2` - Toggle two-column mode (main window only)
+- `Cmd/Ctrl+\` - Toggle two-column mode (main window only)
 - `Cmd/Ctrl+H` - Toggle header visibility (main window only)
 
 **Tools:**
