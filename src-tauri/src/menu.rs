@@ -4,6 +4,8 @@
 //! including the "Open Recent" submenu with dynamically loaded entries.
 
 use crate::db::load_recent_files;
+use crate::error::{MenuError, PedaruError};
+use anyhow::Context;
 use base64::{Engine as _, engine::general_purpose};
 use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 
@@ -14,17 +16,8 @@ fn shortcut(key: &str) -> String {
     format!("CmdOrCtrl+{}", key)
 }
 
-/// Build the application menu with recent files
-///
-/// This creates the complete menu structure including:
-/// - Pedaru menu (About, Initialize, Export/Import, Quit)
-/// - File menu (Open, Open Recent)
-/// - Edit menu (standard editing commands)
-/// - View menu (zoom controls, view modes)
-/// - Window menu (window management)
-pub fn build_app_menu(
-    app: &tauri::AppHandle,
-) -> Result<Menu<tauri::Wry>, Box<dyn std::error::Error>> {
+/// Internal implementation using anyhow for clean error chaining
+fn build_app_menu_internal(app: &tauri::AppHandle) -> anyhow::Result<Menu<tauri::Wry>> {
     // Create app menu items
     let reset_item = MenuItem::with_id(
         app,
@@ -51,13 +44,14 @@ pub fn build_app_menu(
     )?;
 
     // File menu items
-    let open_file_item = MenuItem::with_id(app, "open_file", "Open...", true, Some(&shortcut("O")))?;
+    let open_file_item =
+        MenuItem::with_id(app, "open_file", "Open...", true, Some(&shortcut("O")))?;
 
     // Open Recent submenu - load from SQLite database
     let recent_files = load_recent_files(app, None);
 
     // Build menu items dynamically
-    let mut recent_items = Vec::new();
+    let mut recent_items: Vec<MenuItem<tauri::Wry>> = Vec::new();
 
     for file in recent_files.iter().take(10) {
         // Extract filename from path for fallback
@@ -150,7 +144,8 @@ pub fn build_app_menu(
     // View menu with Zoom and Two-Column options
     let zoom_in = MenuItem::with_id(app, "zoom_in", "Zoom In", true, Some(&shortcut("=")))?;
     let zoom_out = MenuItem::with_id(app, "zoom_out", "Zoom Out", true, Some(&shortcut("-")))?;
-    let zoom_reset = MenuItem::with_id(app, "zoom_reset", "Reset Zoom", true, Some(&shortcut("0")))?;
+    let zoom_reset =
+        MenuItem::with_id(app, "zoom_reset", "Reset Zoom", true, Some(&shortcut("0")))?;
     let toggle_two_column = MenuItem::with_id(
         app,
         "toggle_two_column",
@@ -203,9 +198,22 @@ pub fn build_app_menu(
             &view_submenu,
             &window_submenu,
         ],
-    )?;
+    )
+    .context("Failed to create menu with items")?;
 
     Ok(menu)
+}
+
+/// Build the application menu with recent files
+///
+/// This creates the complete menu structure including:
+/// - Pedaru menu (About, Initialize, Export/Import, Quit)
+/// - File menu (Open, Open Recent)
+/// - Edit menu (standard editing commands)
+/// - View menu (zoom controls, view modes)
+/// - Window menu (window management)
+pub fn build_app_menu(app: &tauri::AppHandle) -> Result<Menu<tauri::Wry>, PedaruError> {
+    build_app_menu_internal(app).map_err(|e| MenuError::BuildFailed(format!("{:#}", e)).into())
 }
 
 /// Encode a file path for use in menu item IDs

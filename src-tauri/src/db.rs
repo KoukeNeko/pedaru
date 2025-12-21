@@ -4,6 +4,7 @@
 //! - Database path resolution
 //! - Loading recent files for the menu
 
+use crate::error::{ConfigError, IoError, PedaruError};
 use crate::types::RecentFile;
 use rusqlite::Connection;
 use std::fs;
@@ -16,17 +17,19 @@ use tauri::Manager;
 /// - macOS: `~/Library/Application Support/com.togatoga.pedaru/pedaru.db`
 /// - Linux: `~/.config/com.togatoga.pedaru/pedaru.db`
 /// - Windows: `C:\Users\<username>\AppData\Roaming\com.togatoga.pedaru\pedaru.db`
-pub fn get_db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+pub fn get_db_path(app: &tauri::AppHandle) -> Result<PathBuf, PedaruError> {
     // Use app_config_dir to match tauri-plugin-sql's database location
     let app_config_dir = app
         .path()
         .app_config_dir()
-        .map_err(|e| format!("Failed to get app config dir: {}", e))?;
+        .map_err(|e| ConfigError::ConfigDirResolutionFailed(e.to_string()))?;
 
     // Create directory if it doesn't exist
     if !app_config_dir.exists() {
-        fs::create_dir_all(&app_config_dir)
-            .map_err(|e| format!("Failed to create app config dir: {}", e))?;
+        fs::create_dir_all(&app_config_dir).map_err(|source| IoError::CreateDirFailed {
+            path: app_config_dir.display().to_string(),
+            source,
+        })?;
     }
 
     Ok(app_config_dir.join("pedaru.db"))
@@ -38,6 +41,9 @@ pub fn get_db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 /// a specific file path (e.g., the currently open file).
 ///
 /// Uses parameterized queries to prevent SQL injection.
+///
+/// Note: This function silently returns an empty Vec on errors.
+/// This is intentional for menu building where graceful degradation is preferred.
 pub fn load_recent_files(app: &tauri::AppHandle, exclude_path: Option<&str>) -> Vec<RecentFile> {
     match get_db_path(app) {
         Ok(db_path) => {
@@ -52,13 +58,19 @@ pub fn load_recent_files(app: &tauri::AppHandle, exclude_path: Option<&str>) -> 
             match Connection::open(&db_path) {
                 Ok(conn) => load_recent_files_from_connection(&conn, exclude_path),
                 Err(e) => {
-                    eprintln!("[Pedaru] Failed to open database: {}", e);
+                    eprintln!(
+                        "[Pedaru] Failed to open database: {:#}",
+                        anyhow::Error::new(e)
+                    );
                     Vec::new()
                 }
             }
         }
         Err(e) => {
-            eprintln!("[Pedaru] Failed to get database path: {}", e);
+            eprintln!(
+                "[Pedaru] Failed to get database path: {:#}",
+                anyhow::Error::from(e)
+            );
             Vec::new()
         }
     }

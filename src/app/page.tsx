@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { invoke } from '@tauri-apps/api/core';
-import { emit, listen } from '@tauri-apps/api/event';
+import { emit } from '@tauri-apps/api/event';
 import { open, confirm, save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs';
 import Header from '@/components/Header';
@@ -38,6 +38,8 @@ import {
   PdfSessionState,
 } from '@/lib/database';
 import { getChapterForPage as getChapter } from '@/lib/pdfUtils';
+import { useTauriEventListener, useTauriEventListeners } from '@/lib/eventUtils';
+import { zoomIn, zoomOut, resetZoom } from '@/lib/zoomConfig';
 import { useBookmarks } from '@/hooks/useBookmarks';
 import { useNavigation } from '@/hooks/useNavigation';
 import { useSearch } from '@/hooks/useSearch';
@@ -45,6 +47,8 @@ import { useTabManagement } from '@/hooks/useTabManagement';
 import { useWindowManagement } from '@/hooks/useWindowManagement';
 import { usePdfLoader } from '@/hooks/usePdfLoader';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { useStartup } from '@/hooks/useStartup';
+import { usePdfViewerState } from '@/hooks/usePdfViewerState';
 import type { OpenWindow, Tab, HistoryEntry } from '@/hooks/types';
 
 export default function Home() {
@@ -53,58 +57,74 @@ export default function Home() {
   console.log('window.location.href:', typeof window !== 'undefined' ? window.location.href : 'SSR');
   console.log('window.location.search:', typeof window !== 'undefined' ? window.location.search : 'SSR');
   
-  const [fileData, setFileData] = useState<Uint8Array | null>(null);
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [filePath, setFilePath] = useState<string | null>(null);
-  const filePathRef = useRef<string | null>(null);
-  const [pdfInfo, setPdfInfo] = useState<PdfInfo | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(0);
-  const [zoom, setZoom] = useState(1.0);
-  const [isTocOpen, setIsTocOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('single');
-  const [isStandaloneMode, setIsStandaloneMode] = useState(false);
-  // Track open windows with their settings
-  const [openWindows, setOpenWindows] = useState<OpenWindow[]>([]);
-  // Navigation history with timestamps; newest should display first
-  const [pageHistory, setPageHistory] = useState<HistoryEntry[]>([]);
-  const [historyIndex, setHistoryIndex] = useState<number>(-1);
-  const [showHistory, setShowHistory] = useState(false);
-  const [showWindows, setShowWindows] = useState(false);
-  const [showBookmarks, setShowBookmarks] = useState(false);
-  const [showHeader, setShowHeader] = useState(true);
-  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
-  const [sidebarWidth, setSidebarWidth] = useState(320);
-  const [tabs, setTabs] = useState<Tab[]>([]);
-  const [activeTabId, setActiveTabId] = useState<number | null>(null);
-  const tabIdRef = useRef<number>(1);
-  const headerWasHiddenBeforeSearchRef = useRef<boolean>(false);
-  const tempShowHeaderRef = useRef<boolean>(false);
-  const headerTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // All state managed via usePdfViewerState hook
+  const {
+    // State groups
+    pdfFile,
+    viewer,
+    ui,
+    search,
+    history,
+    tabWindow,
+    pendingRestore,
+    // Setters
+    pdfFileSetters,
+    viewerSetters,
+    uiSetters,
+    searchSetters,
+    historySetters,
+    tabWindowSetters,
+    pendingRestoreSetters,
+    // Refs
+    refs,
+    // Bookmarks
+    bookmarks,
+    setBookmarks,
+    // Utility
+    resetAllState,
+  } = usePdfViewerState();
+
+  // Destructure for easier access (compatibility with existing code)
+  const { fileData, fileName, filePath, pdfInfo } = pdfFile;
+  const { setFileData, setFileName, setFilePath, setPdfInfo } = pdfFileSetters;
+
+  const { currentPage, totalPages, zoom, viewMode, isLoading, isStandaloneMode } = viewer;
+  const { setCurrentPage, setTotalPages, setZoom, setViewMode, setIsLoading, setIsStandaloneMode } = viewerSetters;
+
+  const { isTocOpen, showHistory, showBookmarks, showWindows, showHeader, showSearchResults, showStandaloneSearch, sidebarWidth } = ui;
+  const { setIsTocOpen, setShowHistory, setShowBookmarks, setShowWindows, setShowHeader, setShowSearchResults, setShowStandaloneSearch, setSidebarWidth } = uiSetters;
+
+  const searchQuery = search.query;
+  const searchResults = search.results;
+  const currentSearchIndex = search.currentIndex;
+  const isSearching = search.isSearching;
+  const { setSearchQuery, setSearchResults, setCurrentSearchIndex, setIsSearching } = searchSetters;
+
+  const { pageHistory, historyIndex } = history;
+  const { setPageHistory, setHistoryIndex } = historySetters;
+
+  const { tabs, activeTabId, openWindows } = tabWindow;
+  const { setTabs, setActiveTabId, setOpenWindows } = tabWindowSetters;
+
+  const { pendingTabsRestore, pendingActiveTabIndex, pendingWindowsRestore } = pendingRestore;
+  const { setPendingTabsRestore, setPendingActiveTabIndex, setPendingWindowsRestore } = pendingRestoreSetters;
+
+  const {
+    filePathRef,
+    tabIdRef,
+    headerWasHiddenBeforeSearchRef,
+    tempShowHeaderRef,
+    headerTimerRef,
+    standaloneSearchInputRef,
+    pdfDocRef,
+    saveTimeoutRef,
+    isRestoringSessionRef,
+  } = refs;
 
   // Keep filePathRef in sync with filePath state
   useEffect(() => {
     filePathRef.current = filePath;
-  }, [filePath]);
-
-  // Search state
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-  const [currentSearchIndex, setCurrentSearchIndex] = useState(0);
-  const [showSearchResults, setShowSearchResults] = useState(false);
-  const [isSearching, setIsSearching] = useState(false);
-  const [showStandaloneSearch, setShowStandaloneSearch] = useState(false);
-  const standaloneSearchInputRef = useRef<HTMLInputElement>(null);
-  const pdfDocRef = useRef<any>(null);
-
-  // Pending restore states for session recovery
-  const [pendingTabsRestore, setPendingTabsRestore] = useState<TabState[] | null>(null);
-  const [pendingWindowsRestore, setPendingWindowsRestore] = useState<WindowState[] | null>(null);
-  const [pendingActiveTabIndex, setPendingActiveTabIndex] = useState<number | null>(null);
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  // Flag to prevent saving during session restoration
-  const isRestoringSessionRef = useRef<boolean>(false);
+  }, [filePath, filePathRef]);
 
   const updateNativeWindowTitle = useCallback(async (page: number, forceStandalone?: boolean) => {
     // Check if we're in standalone mode - use forceStandalone for initial load
@@ -208,27 +228,8 @@ export default function Home() {
   // Close PDF and reset to empty state
   const closePdf = useCallback(() => {
     console.log('[closePdf] Closing PDF and resetting state');
-    setFileData(null);
-    setFileName(null);
-    setFilePath(null);
-    filePathRef.current = null;
-    setPdfInfo(null);
-    setCurrentPage(1);
-    setTotalPages(0);
-    setZoom(1.0);
-    setTabs([]);
-    setActiveTabId(null);
-    setBookmarks([]);
-    setPageHistory([]);
-    setHistoryIndex(-1);
-    setSearchQuery('');
-    setSearchResults([]);
-    setShowSearchResults(false);
-    setIsTocOpen(false);
-    setShowHistory(false);
-    setShowBookmarks(false);
-    setShowWindows(false);
-  }, []);
+    resetAllState();
+  }, [resetAllState]);
 
   const {
     addTabFromCurrent,
@@ -303,17 +304,17 @@ export default function Home() {
     isRestoringSessionRef,
   });
 
-  // Zoom handlers (needed by keyboard shortcuts)
+  // Zoom handlers using centralized config (consistent across keyboard and menu)
   const handleZoomIn = useCallback(() => {
-    setZoom((prev) => Math.min(prev + 0.25, 4));
+    setZoom(zoomIn);
   }, []);
 
   const handleZoomOut = useCallback(() => {
-    setZoom((prev) => Math.max(prev - 0.25, 0.25));
+    setZoom(zoomOut);
   }, []);
 
   const handleZoomReset = useCallback(() => {
-    setZoom(1.0);
+    setZoom(resetZoom());
   }, []);
 
   const handleToggleHeader = useCallback(() => {
@@ -387,362 +388,151 @@ export default function Home() {
   // Note: loadPdfFromPathInternal and loadPdfFromPath now provided by usePdfLoader hook
   // Note: New PDFs are opened in new windows via the Opened event in Rust (like Preview app).
 
+  // Handle reset all data request from app menu
+  const handleResetAllData = useCallback(async () => {
+    // Show native confirmation dialog
+    const confirmed = await confirm(
+      'This will delete:\n\n' +
+      '• All bookmarks\n' +
+      '• All session history\n' +
+      '• Last opened file info\n\n' +
+      'This action cannot be undone.',
+      {
+        title: 'Initialize App?',
+        kind: 'warning',
+        okLabel: 'Initialize',
+        cancelLabel: 'Cancel',
+      }
+    );
+
+    if (confirmed) {
+      // Clear all localStorage data for this app
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('pedaru_')) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+
+      // Reset current state (including viewMode for full reset)
+      resetAllState({ resetViewMode: true });
+    }
+  }, [resetAllState]);
+
   // Listen for reset all data request from app menu (main window only)
-  useEffect(() => {
-    if (isStandaloneMode) return; // Only main window should handle this
+  useTauriEventListener(
+    'reset-all-data-requested',
+    handleResetAllData,
+    [isStandaloneMode, handleResetAllData]
+  );
 
-    let mounted = true;
-    let unlistenFn: (() => void) | null = null;
+  // Menu event handlers
+  const handleExportSession = useCallback(async () => {
+    try {
+      const sessions = await getAllSessions();
+      const exportData = {
+        exportDate: new Date().toISOString(),
+        version: '1.0',
+        sessions: sessions,
+      };
 
-    listen('reset-all-data-requested', async () => {
-      if (!mounted) return;
+      const savePath = await save({
+        title: 'Export Session Data',
+        defaultPath: `pedaru-sessions-${new Date().toISOString().split('T')[0]}.json`,
+        filters: [{ name: 'JSON', extensions: ['json'] }]
+      });
 
-      // Show native confirmation dialog
-      const confirmed = await confirm(
-        'This will delete:\n\n' +
-        '• All bookmarks\n' +
-        '• All session history\n' +
-        '• Last opened file info\n\n' +
-        'This action cannot be undone.',
-        {
-          title: 'Initialize App?',
-          kind: 'warning',
-          okLabel: 'Initialize',
-          cancelLabel: 'Cancel',
-        }
-      );
-
-      if (confirmed) {
-        // Clear all localStorage data for this app
-        const keysToRemove: string[] = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && key.startsWith('pedaru_')) {
-            keysToRemove.push(key);
-          }
-        }
-        keysToRemove.forEach(key => localStorage.removeItem(key));
-
-        // Reset current state
-        setFileData(null);
-        setFileName(null);
-        setFilePath(null);
-        setPdfInfo(null);
-        setCurrentPage(1);
-        setTotalPages(0);
-        setZoom(1.0);
-        setViewMode('single');
-        setBookmarks([]);
-        setTabs([]);
-        setActiveTabId(null);
-        setPageHistory([]);
-        setHistoryIndex(-1);
-        setSearchQuery('');
-        setSearchResults([]);
-        setShowSearchResults(false);
+      if (savePath) {
+        await writeTextFile(savePath, JSON.stringify(exportData, null, 2));
+        console.log('Session data exported successfully to:', savePath);
       }
-    }).then(fn => {
-      if (mounted) {
-        unlistenFn = fn;
-      } else {
-        setTimeout(() => { try { fn(); } catch {} }, 0);
-      }
-    }).catch(() => {});
-
-    return () => {
-      mounted = false;
-      try { unlistenFn?.(); } catch {}
-    };
-  }, [isStandaloneMode]);
-
-  // Listen for menu events from system menu bar
-  useEffect(() => {
-    let mounted = true;
-    const unlisteners: (() => void)[] = [];
-
-    listen('menu-zoom-in', () => {
-      if (!mounted) return;
-      setZoom((prev) => Math.min(prev + 0.1, 3.0));
-    }).then(fn => { if (mounted) unlisteners.push(fn); }).catch(() => {});
-
-    listen('menu-zoom-out', () => {
-      if (!mounted) return;
-      setZoom((prev) => Math.max(prev - 0.1, 0.5));
-    }).then(fn => { if (mounted) unlisteners.push(fn); }).catch(() => {});
-
-    listen('menu-zoom-reset', () => {
-      if (!mounted) return;
-      setZoom(1.0);
-    }).then(fn => { if (mounted) unlisteners.push(fn); }).catch(() => {});
-
-    listen('menu-toggle-two-column', () => {
-      if (!mounted) return;
-      setViewMode((prev) => (prev === 'two-column' ? 'single' : 'two-column'));
-    }).then(fn => { if (mounted) unlisteners.push(fn); }).catch(() => {});
-
-    listen('menu-toggle-header', () => {
-      if (!mounted) return;
-      handleToggleHeader();
-    }).then(fn => { if (mounted) unlisteners.push(fn); }).catch(() => {});
-
-    listen('export-session-data-requested', async () => {
-      if (!mounted) return;
-
-      try {
-        // Get all sessions from database
-        const sessions = await getAllSessions();
-
-        // Prepare export data
-        const exportData = {
-          exportDate: new Date().toISOString(),
-          version: '1.0',
-          sessions: sessions,
-        };
-
-        // Show save dialog
-        const filePath = await save({
-          title: 'Export Session Data',
-          defaultPath: `pedaru-sessions-${new Date().toISOString().split('T')[0]}.json`,
-          filters: [{
-            name: 'JSON',
-            extensions: ['json']
-          }]
-        });
-
-        if (filePath) {
-          // Write the data to file
-          const jsonString = JSON.stringify(exportData, null, 2);
-          await writeTextFile(filePath, jsonString);
-
-          console.log('Session data exported successfully to:', filePath);
-        }
-      } catch (error) {
-        console.error('Failed to export session data:', error);
-      }
-    }).then(fn => { if (mounted) unlisteners.push(fn); }).catch(() => {});
-
-    listen('import-session-data-requested', async () => {
-      if (!mounted) return;
-
-      try {
-        // Show file open dialog
-        const filePath = await open({
-          title: 'Import Session Data',
-          multiple: false,
-          filters: [{
-            name: 'JSON',
-            extensions: ['json']
-          }]
-        });
-
-        if (!filePath) {
-          // User cancelled
-          return;
-        }
-
-        // Read the file
-        const jsonString = await readTextFile(filePath as string);
-
-        // Parse and validate JSON
-        const importData = JSON.parse(jsonString);
-
-        if (!importData.version || !Array.isArray(importData.sessions)) {
-          throw new Error('Invalid session data format');
-        }
-
-        // Import sessions
-        const importCount = await importSessions(importData.sessions);
-
-        // Show success dialog
-        await confirm(
-          `Successfully imported ${importCount} session(s).`,
-          { title: 'Import Complete', kind: 'info' }
-        );
-
-        console.log('Session data imported successfully:', importCount);
-      } catch (error) {
-        console.error('Failed to import session data:', error);
-
-        // Show error dialog
-        await confirm(
-          `Failed to import session data: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          { title: 'Import Failed', kind: 'error' }
-        );
-      }
-    }).then(fn => { if (mounted) unlisteners.push(fn); }).catch(() => {});
-
-    listen('menu-open-file-requested', async () => {
-      if (!mounted) return;
-      await handleOpenFile();
-    }).then(fn => { if (mounted) unlisteners.push(fn); }).catch(() => {});
-
-    listen('menu-open-recent-selected', async (event: any) => {
-      if (!mounted) return;
-
-      try {
-        // Event payload now contains the file path directly (not an index)
-        const selectedFilePath = event.payload as string;
-
-        // Don't reload if it's the same file that's already open
-        if (selectedFilePath === filePathRef.current) {
-          console.log('File already open, skipping reload');
-          return;
-        }
-
-        await loadPdfFromPath(selectedFilePath);
-      } catch (error) {
-        console.error('Failed to open recent file:', error);
-      }
-    }).then(fn => { if (mounted) unlisteners.push(fn); }).catch(() => {});
-
-    return () => {
-      mounted = false;
-      unlisteners.forEach(fn => { try { fn(); } catch {} });
-    };
+    } catch (error) {
+      console.error('Failed to export session data:', error);
+    }
   }, []);
 
-  // Load PDF on startup - either from CLI/"Open With", URL params, or last opened
-  useEffect(() => {
-    console.log('=== Startup useEffect running ===');
-    console.log('isStandaloneMode at startup:', isStandaloneMode);
+  const handleImportSession = useCallback(async () => {
+    try {
+      const importPath = await open({
+        title: 'Import Session Data',
+        multiple: false,
+        filters: [{ name: 'JSON', extensions: ['json'] }]
+      });
 
-    const loadOnStartup = async () => {
-      console.log('=== loadOnStartup called ===');
+      if (!importPath) return;
 
-      // Check for URL parameters (for standalone mode)
-      const params = new URLSearchParams(window.location.search);
-      const urlPage = params.get('page');
-      const urlFile = params.get('file');
-      const isStandalone = params.get('standalone') === 'true';
+      const jsonString = await readTextFile(importPath as string);
+      const importData = JSON.parse(jsonString);
 
-      console.log('URL params:', { urlPage, urlFile, isStandalone });
+      if (!importData.version || !Array.isArray(importData.sessions)) {
+        throw new Error('Invalid session data format');
+      }
 
-      if (isStandalone && urlFile && urlPage) {
-        console.log('Standalone mode detected, loading PDF from:', urlFile);
-        setIsStandaloneMode(true);
-        setIsTocOpen(false);
+      const importCount = await importSessions(importData.sessions);
+      await confirm(
+        `Successfully imported ${importCount} session(s).`,
+        { title: 'Import Complete', kind: 'info' }
+      );
+      console.log('Session data imported successfully:', importCount);
+    } catch (error) {
+      console.error('Failed to import session data:', error);
+      await confirm(
+        `Failed to import session data: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        { title: 'Import Failed', kind: 'error' }
+      );
+    }
+  }, []);
 
-        // Get zoom/viewMode from URL if provided
-        const urlZoom = params.get('zoom');
-        const urlViewMode = params.get('viewMode') as ViewMode | null;
-
-        try {
-          const decodedPath = decodeURIComponent(urlFile);
-          console.log('Decoded file path:', decodedPath);
-
-          // Use internal function directly to avoid dependency issues
-          const success = await loadPdfFromPathInternal(decodedPath, true);
-
-          if (success) {
-            const pageNum = parseInt(urlPage, 10);
-            console.log('Setting page to:', pageNum);
-            setCurrentPage(pageNum);
-            updateNativeWindowTitle(pageNum, true); // forceStandalone since state isn't set yet
-
-            // Apply URL-provided settings
-            if (urlZoom) setZoom(parseFloat(urlZoom));
-            if (urlViewMode) setViewMode(urlViewMode);
-          } else {
-            alert('Failed to load PDF file');
-          }
-        } catch (err) {
-          console.error('Error in standalone mode initialization:', err);
-          alert(`Failed to load PDF: ${err}`);
-        }
+  const handleOpenRecent = useCallback(async (selectedFilePath: string) => {
+    try {
+      if (selectedFilePath === filePathRef.current) {
+        console.log('File already open, skipping reload');
         return;
       }
+      await loadPdfFromPath(selectedFilePath);
+    } catch (error) {
+      console.error('Failed to open recent file:', error);
+    }
+  }, [loadPdfFromPath]);
 
-      // Check for openFile parameter (new independent window for a PDF)
-      const openFile = params.get('openFile');
-      if (openFile) {
-        console.log('Opening PDF in new independent window:', openFile);
-        try {
-          const decodedPath = decodeURIComponent(openFile);
-          console.log('Decoded file path:', decodedPath);
+  // Listen for menu events from system menu bar (zoom, view mode, session export/import)
+  useTauriEventListeners([
+    { event: 'menu-zoom-in', handler: handleZoomIn },
+    { event: 'menu-zoom-out', handler: handleZoomOut },
+    { event: 'menu-zoom-reset', handler: handleZoomReset },
+    { event: 'menu-toggle-two-column', handler: () => setViewMode((prev) => (prev === 'two-column' ? 'single' : 'two-column')) },
+    { event: 'menu-toggle-header', handler: handleToggleHeader },
+    { event: 'export-session-data-requested', handler: handleExportSession },
+    { event: 'import-session-data-requested', handler: handleImportSession },
+  ], [handleZoomIn, handleZoomOut, handleZoomReset, handleToggleHeader, handleExportSession, handleImportSession]);
 
-          const success = await loadPdfFromPathInternal(decodedPath, false);
-          if (success) {
-            setCurrentPage(1);
-            setZoom(1.0);
-            setViewMode('single');
-            // Update last opened path
-            localStorage.setItem('dorper_last_opened_path', decodedPath);
-          } else {
-            alert('Failed to load PDF file');
-          }
-        } catch (err) {
-          console.error('Error loading PDF:', err);
-          alert(`Failed to load PDF: ${err}`);
-        }
-        return;
-      }
+  // Listen for open recent file selection (needs payload access)
+  useTauriEventListener<string>(
+    'menu-open-recent-selected',
+    handleOpenRecent,
+    [handleOpenRecent]
+  );
 
-      // Check for file opened via CLI or "Open With"
-      try {
-        console.log('Checking for opened file from Rust...');
-        const openedFilePath = await invoke<string | null>('get_opened_file');
-        console.log('get_opened_file result:', openedFilePath);
-
-        if (openedFilePath && openedFilePath.toLowerCase().endsWith('.pdf')) {
-          console.log('Loading PDF from opened file:', openedFilePath);
-          await loadPdfFromPath(openedFilePath);
-          return; // Don't load last opened file if we opened one via CLI
-        }
-      } catch (e) {
-        console.error('Error checking opened file:', e);
-      }
-
-      // Try to load last opened PDF using database
-      const lastPath = getLastOpenedPath();
-      if (lastPath) {
-        console.log('Loading last opened PDF:', lastPath);
-        const session = await loadSessionState(lastPath);
-
-        // Reset pdfInfo before loading new PDF
-        setPdfInfo(null);
-
-        if (session) {
-          setZoom(session.zoom || 1.0);
-          setViewMode(session.viewMode || 'single');
-          const success = await loadPdfFromPathInternal(lastPath, false);
-          if (success) {
-            setCurrentPage(session.page || 1);
-            updateNativeWindowTitle(session.page || 1);
-
-            // Restore bookmarks
-            if (session.bookmarks && session.bookmarks.length > 0) {
-              setBookmarks(session.bookmarks);
-            }
-
-            // Restore page history
-            if (session.pageHistory && session.pageHistory.length > 0) {
-              setPageHistory(session.pageHistory);
-              setHistoryIndex(session.historyIndex ?? session.pageHistory.length - 1);
-            }
-
-            // Set pending states for tabs and windows restoration
-            if (session.tabs && session.tabs.length > 0) {
-              setPendingTabsRestore(session.tabs);
-              setPendingActiveTabIndex(session.activeTabIndex);
-            }
-            if (session.windows && session.windows.length > 0) {
-              setPendingWindowsRestore(session.windows);
-            }
-          }
-        } else {
-          // No session data - load PDF with defaults (page 1)
-          const success = await loadPdfFromPathInternal(lastPath, false);
-          if (success) {
-            setCurrentPage(1);
-            setZoom(1.0);
-            setViewMode('single');
-          }
-        }
-      }
-    };
-
-    loadOnStartup();
-  }, []); // Run only once on mount
+  // Application startup logic (standalone mode, CLI file, session restore)
+  useStartup({
+    setIsStandaloneMode,
+    setIsTocOpen,
+    setCurrentPage,
+    setZoom,
+    setViewMode,
+    setPdfInfo,
+    setBookmarks,
+    setPageHistory,
+    setHistoryIndex,
+    setPendingTabsRestore,
+    setPendingActiveTabIndex,
+    setPendingWindowsRestore,
+    loadPdfFromPathInternal,
+    loadPdfFromPath,
+    updateNativeWindowTitle,
+  });
 
   // Note: Tab and window restoration are handled via refs to avoid circular dependencies
   const pendingTabsRestoreRef = useRef<{ tabs: TabState[]; activeIndex: number | null } | null>(null);
@@ -779,6 +569,13 @@ export default function Home() {
       setIsLoading(false);
     }
   }, [loadPdfFromPath]);
+
+  // Listen for open file menu event (must be after handleOpenFile is defined)
+  useTauriEventListener(
+    'menu-open-file-requested',
+    handleOpenFile,
+    [handleOpenFile]
+  );
 
   const handleLoadSuccess = useCallback((numPages: number) => {
     setTotalPages(numPages);
@@ -869,136 +666,72 @@ export default function Home() {
     updateTitle();
   }, [isStandaloneMode, currentPage, pdfInfo, getChapterForPage]);
 
-  // Listen for page changes from standalone windows
-  useEffect(() => {
-    if (isStandaloneMode) return; // Only main window should listen
-
-    let mounted = true;
-    let unlistenFn: (() => void) | null = null;
-
-    listen<{ label: string; page: number }>('window-page-changed', (event) => {
-      if (!mounted) return;
-      const { label, page } = event.payload;
-      const chapter = getChapterForPage(page);
-      setOpenWindows(prev => prev.map(w =>
-        w.label === label
-          ? { ...w, page, chapter }
-          : w
-      ));
-
-      // Also update the window title
-      WebviewWindow.getByLabel(label).then(win => {
-        if (win) {
-          win.setTitle(chapter ? `${chapter} (Page ${page})` : `Page ${page}`).catch(console.warn);
-        }
-      });
-    }).then(fn => {
-      if (mounted) {
-        unlistenFn = fn;
-      } else {
-        setTimeout(() => { try { fn(); } catch {} }, 0);
+  // Window event handlers (main window only)
+  const handleWindowPageChanged = useCallback((payload: { label: string; page: number }) => {
+    if (isStandaloneMode) return;
+    const { label, page } = payload;
+    const chapter = getChapterForPage(page);
+    setOpenWindows(prev => prev.map(w =>
+      w.label === label ? { ...w, page, chapter } : w
+    ));
+    WebviewWindow.getByLabel(label).then(win => {
+      if (win) {
+        win.setTitle(chapter ? `${chapter} (Page ${page})` : `Page ${page}`).catch(console.warn);
       }
-    }).catch(() => {});
-
-    return () => {
-      mounted = false;
-      try { unlistenFn?.(); } catch {}
-    };
+    });
   }, [isStandaloneMode, getChapterForPage]);
 
-  // Listen for state changes (zoom, viewMode) from standalone windows
-  useEffect(() => {
-    if (isStandaloneMode) return; // Only main window should listen
-
-    let mounted = true;
-    let unlistenFn: (() => void) | null = null;
-
-    listen<{
-      label: string;
-      zoom: number;
-      viewMode: ViewMode;
-    }>('window-state-changed', (event) => {
-      if (!mounted) return;
-      const { label, zoom: winZoom, viewMode: winViewMode } = event.payload;
-      setOpenWindows(prev => prev.map(w =>
-        w.label === label
-          ? { ...w, zoom: winZoom, viewMode: winViewMode }
-          : w
-      ));
-    }).then(fn => {
-      if (mounted) {
-        unlistenFn = fn;
-      } else {
-        setTimeout(() => { try { fn(); } catch {} }, 0);
-      }
-    }).catch(() => {});
-
-    return () => {
-      mounted = false;
-      try { unlistenFn?.(); } catch {}
-    };
+  const handleWindowStateChanged = useCallback((payload: { label: string; zoom: number; viewMode: ViewMode }) => {
+    if (isStandaloneMode) return;
+    const { label, zoom: winZoom, viewMode: winViewMode } = payload;
+    setOpenWindows(prev => prev.map(w =>
+      w.label === label ? { ...w, zoom: winZoom, viewMode: winViewMode } : w
+    ));
   }, [isStandaloneMode]);
 
-  // Listen for move-window-to-tab events from standalone windows
-  useEffect(() => {
-    if (isStandaloneMode) return; // Only main window should listen
-
-    let mounted = true;
-    let unlistenFn: (() => void) | null = null;
-
-    listen<{ label: string; page: number }>('move-window-to-tab', (event) => {
-      if (!mounted) return;
-      const { label, page } = event.payload;
-      // Remove from openWindows
-      setOpenWindows(prev => prev.filter(w => w.label !== label));
-      // Add as a new tab
-      const newId = tabIdRef.current++;
-      const chapter = getChapterForPage(page);
-      const tabLabel = chapter ? `P${page}: ${chapter}` : `Page ${page}`;
-      setTabs(prev => [...prev, { id: newId, page, label: tabLabel }]);
-      setActiveTabId(newId);
-      setCurrentPage(page);
-    }).then(fn => {
-      if (mounted) {
-        unlistenFn = fn;
-      } else {
-        // Component unmounted during registration - schedule cleanup
-        setTimeout(() => { try { fn(); } catch {} }, 0);
-      }
-    }).catch(() => {});
-
-    return () => {
-      mounted = false;
-      try { unlistenFn?.(); } catch {}
-    };
+  const handleMoveWindowToTab = useCallback((payload: { label: string; page: number }) => {
+    if (isStandaloneMode) return;
+    const { label, page } = payload;
+    setOpenWindows(prev => prev.filter(w => w.label !== label));
+    const newId = tabIdRef.current++;
+    const chapter = getChapterForPage(page);
+    const tabLabel = chapter ? `P${page}: ${chapter}` : `Page ${page}`;
+    setTabs(prev => [...prev, { id: newId, page, label: tabLabel }]);
+    setActiveTabId(newId);
+    setCurrentPage(page);
   }, [isStandaloneMode, getChapterForPage]);
 
-  // Listen for bookmark sync events from other windows
-  useEffect(() => {
-    let mounted = true;
-    let unlistenFn: (() => void) | null = null;
-
+  const handleBookmarkSync = useCallback((payload: { bookmarks: Bookmark[]; sourceLabel: string }) => {
     const myLabel = isStandaloneMode ? getCurrentWebviewWindow().label : 'main';
-
-    listen<{ bookmarks: Bookmark[]; sourceLabel: string }>('bookmark-sync', (event) => {
-      if (!mounted) return;
-      const { bookmarks: newBookmarks, sourceLabel } = event.payload;
-      // Ignore events from self
-      if (sourceLabel === myLabel) return;
-      setBookmarks(newBookmarks);
-    }).then(fn => {
-      if (mounted) {
-        unlistenFn = fn;
-      } else {
-        setTimeout(() => { try { fn(); } catch {} }, 0);
-      }
-    }).catch(() => {});
-
-    return () => {
-      mounted = false;
-      try { unlistenFn?.(); } catch {}
-    };
+    const { bookmarks: newBookmarks, sourceLabel } = payload;
+    if (sourceLabel === myLabel) return;
+    setBookmarks(newBookmarks);
   }, [isStandaloneMode]);
+
+  // Listen for window events using the utility hooks
+  useTauriEventListener<{ label: string; page: number }>(
+    'window-page-changed',
+    handleWindowPageChanged,
+    [handleWindowPageChanged]
+  );
+
+  useTauriEventListener<{ label: string; zoom: number; viewMode: ViewMode }>(
+    'window-state-changed',
+    handleWindowStateChanged,
+    [handleWindowStateChanged]
+  );
+
+  useTauriEventListener<{ label: string; page: number }>(
+    'move-window-to-tab',
+    handleMoveWindowToTab,
+    [handleMoveWindowToTab]
+  );
+
+  useTauriEventListener<{ bookmarks: Bookmark[]; sourceLabel: string }>(
+    'bookmark-sync',
+    handleBookmarkSync,
+    [handleBookmarkSync]
+  );
 
   // Emit state changes from standalone windows to main window
   useEffect(() => {

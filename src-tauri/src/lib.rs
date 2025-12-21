@@ -14,6 +14,7 @@ use tauri_plugin_sql::Builder as SqlBuilder;
 pub mod db;
 mod db_schema;
 pub mod encoding;
+pub mod error;
 pub mod menu;
 pub mod pdf;
 pub mod types;
@@ -23,16 +24,19 @@ pub use types::{PdfInfo, RecentFile, TocEntry};
 
 // Re-export functions for use in commands
 use encoding::decode_pdf_string;
+use error::{IntoTauriError, IoError, MenuError, PdfError};
 use menu::{build_app_menu, decode_file_path_from_menu_id};
 use pdf::extract_toc;
 
-/// Extract PDF information including metadata and table of contents
-#[tauri::command]
-fn get_pdf_info(path: String) -> Result<PdfInfo, String> {
+/// Internal implementation of get_pdf_info with typed errors
+fn get_pdf_info_impl(path: &str) -> error::Result<PdfInfo> {
     eprintln!("[Pedaru] get_pdf_info called for: {}", path);
 
     // Load document from file
-    let doc = Document::load(&path).map_err(|e| format!("Failed to load PDF: {}", e))?;
+    let doc = Document::load(path).map_err(|source| PdfError::LoadFailed {
+        path: path.to_string(),
+        source,
+    })?;
     eprintln!("[Pedaru] PDF loaded successfully");
 
     let mut title = None;
@@ -57,10 +61,20 @@ fn get_pdf_info(path: String) -> Result<PdfInfo, String> {
     })
 }
 
-/// Simple greeting command for testing
+/// Extract PDF information including metadata and table of contents
 #[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
+fn get_pdf_info(path: String) -> Result<PdfInfo, String> {
+    get_pdf_info_impl(&path).map_err(|e| e.into_tauri_error())
+}
+
+/// Internal implementation of read_pdf_file with typed errors
+fn read_pdf_file_impl(path: &str) -> error::Result<Vec<u8>> {
+    std::fs::read(path)
+        .map_err(|source| IoError::ReadFailed {
+            path: path.to_string(),
+            source,
+        })
+        .map_err(Into::into)
 }
 
 /// Read PDF file and return the bytes
@@ -68,7 +82,7 @@ fn greet(name: &str) -> String {
 /// Returns the original file bytes - decryption is handled by pdf.js on the frontend.
 #[tauri::command]
 fn read_pdf_file(path: String) -> Result<Vec<u8>, String> {
-    std::fs::read(&path).map_err(|e| format!("Failed to read PDF file: {}", e))
+    read_pdf_file_impl(&path).map_err(|e| e.into_tauri_error())
 }
 
 // Store pending file path to open (set before frontend is ready)
@@ -85,7 +99,9 @@ fn get_pending_file() -> &'static Arc<Mutex<Option<String>>> {
 #[tauri::command]
 fn get_opened_file() -> Option<String> {
     let pending = get_pending_file();
-    let mut guard = pending.lock().unwrap();
+    let mut guard = pending
+        .lock()
+        .expect("PENDING_FILE mutex poisoned - previous thread panicked");
     guard.take()
 }
 
@@ -95,15 +111,20 @@ fn was_opened_via_event() -> bool {
     OPENED_VIA_EVENT.load(Ordering::SeqCst)
 }
 
+/// Internal implementation of refresh_recent_menu with typed errors
+fn refresh_recent_menu_impl(app: &tauri::AppHandle) -> error::Result<()> {
+    eprintln!("[Pedaru] Refreshing recent files menu");
+    let menu = build_app_menu(app)?;
+    app.set_menu(menu)
+        .map_err(|e| MenuError::SetMenuFailed(e.to_string()))?;
+    eprintln!("[Pedaru] Recent files menu refreshed successfully");
+    Ok(())
+}
+
 /// Refresh the recent files menu
 #[tauri::command]
 fn refresh_recent_menu(app: tauri::AppHandle) -> Result<(), String> {
-    eprintln!("[Pedaru] Refreshing recent files menu");
-    let menu = build_app_menu(&app).map_err(|e| format!("Failed to build menu: {}", e))?;
-    app.set_menu(menu)
-        .map_err(|e| format!("Failed to set menu: {}", e))?;
-    eprintln!("[Pedaru] Recent files menu refreshed successfully");
-    Ok(())
+    refresh_recent_menu_impl(&app).map_err(|e| e.into_tauri_error())
 }
 
 /// Main application entry point
@@ -122,7 +143,10 @@ pub fn run() {
         if file_path.to_lowercase().ends_with(".pdf") {
             eprintln!("[Pedaru] Setting pending file: {}", file_path);
             let pending = get_pending_file();
-            *pending.lock().unwrap() = Some(file_path.clone());
+            *pending
+                .lock()
+                .expect("PENDING_FILE mutex poisoned - previous thread panicked") =
+                Some(file_path.clone());
         }
     }
 
@@ -139,7 +163,6 @@ pub fn run() {
                 .build(),
         )
         .invoke_handler(tauri::generate_handler![
-            greet,
             get_pdf_info,
             read_pdf_file,
             get_opened_file,
@@ -148,7 +171,7 @@ pub fn run() {
         ])
         .setup(|app| {
             // Build and set the initial menu
-            let menu = build_app_menu(app.handle()).map_err(|e| e.to_string())?;
+            let menu = build_app_menu(app.handle()).map_err(|e| e.into_tauri_error())?;
             app.set_menu(menu)?;
 
             Ok(())
@@ -225,7 +248,9 @@ pub fn run() {
                                         path_str
                                     );
                                     let pending = get_pending_file();
-                                    *pending.lock().unwrap() = Some(path_str);
+                                    *pending.lock().expect(
+                                        "PENDING_FILE mutex poisoned - previous thread panicked",
+                                    ) = Some(path_str);
                                 } else {
                                     // App is already running - create a new independent window
                                     let encoded_path = urlencoding::encode(&path_str).into_owned();
@@ -286,21 +311,4 @@ pub fn run() {
                 _ => {}
             }
         });
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_greet() {
-        let result = greet("World");
-        assert_eq!(result, "Hello, World! You've been greeted from Rust!");
-    }
-
-    #[test]
-    fn test_greet_empty_name() {
-        let result = greet("");
-        assert_eq!(result, "Hello, ! You've been greeted from Rust!");
-    }
 }
