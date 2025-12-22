@@ -1,11 +1,7 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
-
-interface HistoryEntry {
-  page: number;
-  timestamp: string;
-}
+import type { HistoryEntry } from '@/types';
+import { useAutoScroll } from '@/hooks/useAutoScroll';
 
 interface HistorySidebarProps {
   history: HistoryEntry[];
@@ -16,18 +12,8 @@ interface HistorySidebarProps {
 }
 
 export default function HistorySidebar({ history, index, currentPage, onSelect, onClear }: HistorySidebarProps) {
-  const activeItemRef = useRef<HTMLLIElement>(null);
+  const activeItemRef = useAutoScroll<HTMLLIElement>([currentPage, index]);
   const items = [...history].reverse(); // newest first
-
-  // Auto-scroll to current page when currentPage or index changes
-  useEffect(() => {
-    if (activeItemRef.current) {
-      activeItemRef.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'nearest',
-      });
-    }
-  }, [currentPage, index]);
 
   return (
     <aside className={`w-64 shrink-0 border-r border-bg-tertiary bg-bg-secondary overflow-auto`}>

@@ -2,11 +2,15 @@
 
 import { useEffect, useRef, Dispatch, SetStateAction } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { ViewMode } from '@/components/Settings';
-import { PdfInfo } from '@/types/pdf';
-import { loadSessionState, getLastOpenedPath, TabState, WindowState } from '@/lib/database';
-import { Bookmark } from '@/components/BookmarkSidebar';
-import type { HistoryEntry } from '@/hooks/types';
+import type {
+  ViewMode,
+  PdfInfo,
+  Bookmark,
+  HistoryEntry,
+  TabState,
+  WindowState,
+} from '@/types';
+import { loadSessionState, getLastOpenedPath } from '@/lib/database';
 
 /**
  * URL parameters for startup

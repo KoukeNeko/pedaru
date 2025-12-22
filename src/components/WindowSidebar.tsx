@@ -1,18 +1,10 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
-import { ViewMode } from '@/components/Settings';
-
-interface WindowEntry {
-  page: number;
-  label: string;
-  chapter?: string;
-  zoom: number;
-  viewMode: ViewMode;
-}
+import type { OpenWindow } from '@/types';
+import { useAutoScroll } from '@/hooks/useAutoScroll';
 
 interface WindowSidebarProps {
-  windows: WindowEntry[];
+  windows: OpenWindow[];
   currentPage: number;
   onFocus: (label: string) => Promise<void> | void;
   onClose: (label: string) => void;
@@ -20,17 +12,7 @@ interface WindowSidebarProps {
 }
 
 export default function WindowSidebar({ windows, currentPage, onFocus, onClose, onMoveToTab }: WindowSidebarProps) {
-  const activeItemRef = useRef<HTMLLIElement>(null);
-
-  // Auto-scroll to active window when currentPage changes
-  useEffect(() => {
-    if (activeItemRef.current) {
-      activeItemRef.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'nearest',
-      });
-    }
-  }, [currentPage]);
+  const activeItemRef = useAutoScroll<HTMLLIElement>([currentPage]);
 
   return (
     <aside className="w-80 bg-bg-secondary border-r border-bg-tertiary flex flex-col flex-shrink-0 overflow-hidden">

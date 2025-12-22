@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { Bookmark as BookmarkIcon, Trash2, ArrowUpDown } from 'lucide-react';
+import type { Bookmark } from '@/types';
+import { useAutoScroll } from '@/hooks/useAutoScroll';
+import { formatDateTime } from '@/lib/formatUtils';
 
-export interface Bookmark {
-  page: number;
-  label: string;
-  createdAt: number;
-}
+// Re-export for backward compatibility
+export type { Bookmark };
 
 interface BookmarkSidebarProps {
   bookmarks: Bookmark[];
@@ -19,16 +19,6 @@ interface BookmarkSidebarProps {
 
 type SortMode = 'date' | 'page';
 
-// Format date and time
-function formatDateTime(timestamp: number): string {
-  const date = new Date(timestamp);
-  const month = date.getMonth() + 1;
-  const day = date.getDate();
-  const hours = date.getHours().toString().padStart(2, '0');
-  const minutes = date.getMinutes().toString().padStart(2, '0');
-  return `${month}/${day} ${hours}:${minutes}`;
-}
-
 export default function BookmarkSidebar({
   bookmarks,
   currentPage,
@@ -37,7 +27,7 @@ export default function BookmarkSidebar({
   onClear,
 }: BookmarkSidebarProps) {
   const [sortMode, setSortMode] = useState<SortMode>('date');
-  const activeItemRef = useRef<HTMLLIElement>(null);
+  const activeItemRef = useAutoScroll<HTMLLIElement>([currentPage]);
 
   // Sort based on mode
   const sortedBookmarks = [...bookmarks].sort((a, b) => {
@@ -47,16 +37,6 @@ export default function BookmarkSidebar({
       return a.page - b.page; // Page order
     }
   });
-
-  // Auto-scroll to current page bookmark when currentPage changes
-  useEffect(() => {
-    if (activeItemRef.current) {
-      activeItemRef.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'nearest',
-      });
-    }
-  }, [currentPage]);
 
   return (
     <aside className="w-64 shrink-0 border-r border-bg-tertiary bg-bg-secondary overflow-auto">

@@ -1,12 +1,17 @@
 'use client';
 
 import { useState, useRef, useCallback, Dispatch, SetStateAction } from 'react';
-import { ViewMode } from '@/components/Settings';
-import { PdfInfo } from '@/types/pdf';
-import { Bookmark } from '@/components/BookmarkSidebar';
-import { SearchResult } from '@/components/SearchResultsSidebar';
-import type { OpenWindow, Tab, HistoryEntry } from '@/hooks/types';
-import { TabState, WindowState } from '@/lib/database';
+import type {
+  ViewMode,
+  PdfInfo,
+  Bookmark,
+  SearchResult,
+  OpenWindow,
+  Tab,
+  HistoryEntry,
+  TabState,
+  WindowState,
+} from '@/types';
 
 /**
  * PDF file state group

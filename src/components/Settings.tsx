@@ -1,8 +1,10 @@
 'use client';
 
 import { X, Monitor, Columns } from 'lucide-react';
+import type { ViewMode } from '@/types';
 
-export type ViewMode = 'single' | 'two-column';
+// Re-export for backward compatibility
+export type { ViewMode };
 
 interface SettingsProps {
   isOpen: boolean;

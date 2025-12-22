@@ -2,19 +2,20 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
 import { open, confirm, save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs';
 import Header from '@/components/Header';
-import { Columns, History, PanelTop, Bookmark as BookmarkIcon, Search, X, List, Loader2 } from 'lucide-react';
-import { getCurrentWebviewWindow, WebviewWindow, getAllWebviewWindows } from '@tauri-apps/api/webviewWindow';
+import { Loader2 } from 'lucide-react';
+import { getCurrentWebviewWindow, WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import TocSidebar from '@/components/TocSidebar';
 import HistorySidebar from '@/components/HistorySidebar';
 import WindowSidebar from '@/components/WindowSidebar';
-import BookmarkSidebar, { Bookmark } from '@/components/BookmarkSidebar';
-import SearchResultsSidebar, { SearchResult } from '@/components/SearchResultsSidebar';
-import { ViewMode } from '@/components/Settings';
+import BookmarkSidebar from '@/components/BookmarkSidebar';
+import SearchResultsSidebar from '@/components/SearchResultsSidebar';
+import { StandaloneWindowControls } from '@/components/StandaloneWindowControls';
+import { TabBar } from '@/components/TabBar';
+import type { ViewMode, Bookmark, PdfInfo, TabState, WindowState, PdfSessionState } from '@/types';
 
 // Dynamic import for PdfViewer to avoid SSR issues with pdfjs-dist
 const PdfViewer = dynamic(() => import('@/components/PdfViewer'), {
@@ -25,18 +26,12 @@ const PdfViewer = dynamic(() => import('@/components/PdfViewer'), {
     </div>
   ),
 });
-import { PdfInfo } from '@/types/pdf';
 import {
   saveSessionState,
-  loadSessionState,
-  getLastOpenedPath,
   getAllSessions,
   importSessions,
-  getRecentFiles,
-  TabState,
-  WindowState,
-  PdfSessionState,
 } from '@/lib/database';
+import { getTabLabel } from '@/lib/formatUtils';
 import { getChapterForPage as getChapter } from '@/lib/pdfUtils';
 import { useTauriEventListener, useTauriEventListeners } from '@/lib/eventUtils';
 import { zoomIn, zoomOut, resetZoom } from '@/lib/zoomConfig';
@@ -695,7 +690,7 @@ export default function Home() {
     setOpenWindows(prev => prev.filter(w => w.label !== label));
     const newId = tabIdRef.current++;
     const chapter = getChapterForPage(page);
-    const tabLabel = chapter ? `P${page}: ${chapter}` : `Page ${page}`;
+    const tabLabel = getTabLabel(page, chapter);
     setTabs(prev => [...prev, { id: newId, page, label: tabLabel }]);
     setActiveTabId(newId);
     setCurrentPage(page);
@@ -791,319 +786,51 @@ export default function Home() {
 
       {/* Tabs bar - shows when tabs exist OR when windows exist (for drop target) */}
       {!isStandaloneMode && showHeader && (tabs.length > 0 || openWindows.length > 0) && (
-        <div
-          className="flex items-center gap-2 px-4 py-2 bg-bg-secondary border-b border-bg-tertiary min-h-[44px] overflow-x-auto scrollbar-thin scrollbar-thumb-bg-tertiary scrollbar-track-transparent"
-          onDragOver={(e) => {
-            // Accept window drops
-            if (e.dataTransfer.types.includes('application/x-pedaru-window')) {
-              e.preventDefault();
-              e.dataTransfer.dropEffect = 'move';
-            }
-          }}
-          onDrop={(e) => {
-            const windowData = e.dataTransfer.getData('application/x-pedaru-window');
-            if (windowData) {
-              e.preventDefault();
-              try {
-                const { label, page } = JSON.parse(windowData);
-                moveWindowToTab(label, page);
-              } catch (err) {
-                console.warn('Failed to parse window data', err);
-              }
-            }
-          }}
-        >
-          {tabs.length === 0 && openWindows.length > 0 && (
-            <span
-              className="text-text-secondary text-sm flex-1 py-2"
-              onDragOver={(e) => {
-                if (e.dataTransfer.types.includes('application/x-pedaru-window')) {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = 'move';
-                }
-              }}
-              onDrop={(e) => {
-                const windowData = e.dataTransfer.getData('application/x-pedaru-window');
-                if (windowData) {
-                  e.preventDefault();
-                  try {
-                    const { label, page } = JSON.parse(windowData);
-                    moveWindowToTab(label, page);
-                  } catch (err) {
-                    console.warn('Failed to parse window data', err);
-                  }
-                }
-              }}
-            >
-              Drag windows here to create tabs
-            </span>
-          )}
-          {tabs.map((tab) => (
-            <div
-              key={tab.id}
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('application/x-pedaru-tab', JSON.stringify({ id: tab.id, page: tab.page }));
-              }}
-              onDragOver={(e) => {
-                // Accept window drops on tabs
-                if (e.dataTransfer.types.includes('application/x-pedaru-window')) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  e.dataTransfer.dropEffect = 'move';
-                }
-              }}
-              onDrop={(e) => {
-                // Handle window drops on tabs
-                const windowData = e.dataTransfer.getData('application/x-pedaru-window');
-                if (windowData) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  try {
-                    const { label, page } = JSON.parse(windowData);
-                    moveWindowToTab(label, page);
-                  } catch (err) {
-                    console.warn('Failed to parse window data', err);
-                  }
-                }
-              }}
-              onDragEnd={(e) => {
-                // Check if dropped outside the tabs bar (open as window)
-                const rect = e.currentTarget.parentElement?.getBoundingClientRect();
-                if (rect && (e.clientY < rect.top - 50 || e.clientY > rect.bottom + 50 || e.clientX < rect.left - 50 || e.clientX > rect.right + 50)) {
-                  // Dropped outside - open as standalone window and remove tab
-                  openStandaloneWindow(tab.page);
-                  setTabs(prev => prev.filter(t => t.id !== tab.id));
-                  if (activeTabId === tab.id) {
-                    const remaining = tabs.filter(t => t.id !== tab.id);
-                    if (remaining.length > 0) {
-                      setActiveTabId(remaining[0].id);
-                      goToPage(remaining[0].page);
-                    } else {
-                      setActiveTabId(null);
-                    }
-                  }
-                }
-              }}
-              onClick={() => selectTab(tab.id)}
-              className={`group/tab flex items-center gap-1 pl-3 pr-1.5 py-1.5 rounded-lg text-sm transition-colors cursor-grab active:cursor-grabbing max-w-[220px] shrink-0 ${
-                activeTabId === tab.id ? 'bg-accent text-white' : 'bg-bg-tertiary hover:bg-bg-hover text-text-primary'
-              }`}
-              title={`${tab.label} - Drag outside to open in new window`}
-            >
-              <span className="truncate">{tab.label}</span>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const tabIndex = tabs.findIndex((t) => t.id === tab.id);
-                  const newTabs = tabs.filter((t) => t.id !== tab.id);
-                  setTabs(newTabs);
-                  if (activeTabId === tab.id && newTabs.length > 0) {
-                    const newIndex = Math.min(tabIndex, newTabs.length - 1);
-                    setActiveTabId(newTabs[newIndex].id);
-                    navigateToPageWithoutTabUpdate(newTabs[newIndex].page);
-                  } else if (newTabs.length === 0) {
-                    setActiveTabId(null);
-                    closePdf();
-                  }
-                }}
-                className={`p-0.5 rounded opacity-0 group-hover/tab:opacity-100 transition-opacity ${
-                  activeTabId === tab.id ? 'hover:bg-white/20' : 'hover:bg-bg-tertiary'
-                }`}
-                title="Close tab"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-          ))}
-        </div>
+        <TabBar
+          tabs={tabs}
+          activeTabId={activeTabId}
+          openWindowsCount={openWindows.length}
+          selectTab={selectTab}
+          closeTab={closeCurrentTab}
+          openStandaloneWindow={openStandaloneWindow}
+          moveWindowToTab={moveWindowToTab}
+          navigateToPageWithoutTabUpdate={navigateToPageWithoutTabUpdate}
+          goToPage={goToPage}
+          closePdf={closePdf}
+          setTabs={setTabs}
+          setActiveTabId={setActiveTabId}
+        />
       )}
 
       {/* Standalone mode: Floating navigation */}
       {isStandaloneMode && totalPages > 0 && (
-        <div className="absolute top-4 right-4 z-10 flex items-center gap-2 bg-bg-secondary/95 backdrop-blur-sm px-4 py-2 rounded-lg shadow-lg border border-bg-tertiary transition-opacity duration-150 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto">
-          {/* History back/forward */}
-          <button
-            onClick={goBack}
-            disabled={!canGoBack}
-            className="p-1.5 rounded hover:bg-bg-tertiary text-text-primary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            title="Back"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <button
-            onClick={goForward}
-            disabled={!canGoForward}
-            className="p-1.5 rounded hover:bg-bg-tertiary text-text-primary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            title="Forward"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-          <button
-            onClick={goToPrevPage}
-            disabled={currentPage <= 1}
-            className="p-1.5 rounded hover:bg-bg-tertiary text-text-primary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            title="Previous Page (←)"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          
-          <span className="text-text-primary text-sm font-medium min-w-[80px] text-center">
-            {currentPage} / {totalPages}
-          </span>
-          
-          <button
-            onClick={goToNextPage}
-            disabled={currentPage >= totalPages}
-            className="p-1.5 rounded hover:bg-bg-tertiary text-text-primary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            title="Next Page (→)"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-
-          {/* ToC toggle for standalone window */}
-          <button
-            onClick={() => setIsTocOpen((prev) => !prev)}
-            className={`ml-2 p-1.5 rounded hover:bg-bg-tertiary text-text-primary transition-colors ${isTocOpen ? 'text-accent' : ''}`}
-            title={isTocOpen ? 'Hide Table of Contents' : 'Show Table of Contents'}
-            aria-label={isTocOpen ? 'Hide Table of Contents' : 'Show Table of Contents'}
-          >
-            <List className="w-5 h-5" />
-          </button>
-
-          {/* View mode toggle for standalone window */}
-          <button
-            onClick={() => setViewMode(prev => (prev === 'two-column' ? 'single' : 'two-column'))}
-            className="p-1.5 rounded hover:bg-bg-tertiary text-text-primary transition-colors"
-            title={viewMode === 'two-column' ? 'Switch to Single Page' : 'Switch to Two-Column'}
-          >
-            <Columns className={`w-5 h-5 ${viewMode === 'two-column' ? 'text-accent' : ''}`} />
-          </button>
-
-          {/* History toggle next to view mode */}
-          <button
-            onClick={() => setShowHistory((prev) => !prev)}
-            className={`p-1.5 rounded hover:bg-bg-tertiary text-text-primary transition-colors ${showHistory ? 'text-accent' : ''}`}
-            title={showHistory ? 'Hide History' : 'Show History'}
-            aria-label={showHistory ? 'Hide History' : 'Show History'}
-          >
-            <History className="w-5 h-5" />
-          </button>
-
-          {/* Bookmark toggle for standalone window */}
-          <button
-            onClick={toggleBookmark}
-            className={`relative p-1.5 rounded hover:bg-bg-tertiary transition-colors ${isCurrentPageBookmarked ? 'text-yellow-500' : 'text-text-primary'}`}
-            title={isCurrentPageBookmarked ? 'Remove Bookmark' : 'Add Bookmark'}
-            aria-label={isCurrentPageBookmarked ? 'Remove Bookmark' : 'Add Bookmark'}
-          >
-            <BookmarkIcon className={`w-5 h-5 ${isCurrentPageBookmarked ? 'fill-yellow-500' : ''}`} />
-            {bookmarks.length > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] flex items-center justify-center bg-yellow-500 text-white text-[10px] font-bold rounded-full px-0.5">
-                {bookmarks.length > 99 ? '99+' : bookmarks.length}
-              </span>
-            )}
-          </button>
-
-          {/* Zoom controls for standalone window */}
-          <div className="ml-2 flex items-center gap-2">
-            <button
-              onClick={handleZoomOut}
-              className="p-1.5 rounded hover:bg-bg-tertiary text-text-primary transition-colors"
-              title="Zoom Out"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 12H5" />
-              </svg>
-            </button>
-            <span className="text-text-primary text-sm min-w-[50px] text-center">
-              {Math.round(zoom * 100)}%
-            </span>
-            <button
-              onClick={handleZoomIn}
-              className="p-1.5 rounded hover:bg-bg-tertiary text-text-primary transition-colors"
-              title="Zoom In"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14M19 12H5" />
-              </svg>
-            </button>
-          </div>
-
-          {/* Text search for standalone window */}
-          <div className="ml-2 flex items-center gap-1">
-            {showStandaloneSearch ? (
-              <div className="flex items-center gap-1 bg-bg-primary rounded-md px-2 py-1">
-                <Search className="w-4 h-4 text-text-secondary" />
-                <input
-                  ref={standaloneSearchInputRef}
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Escape') {
-                      setShowStandaloneSearch(false);
-                      setSearchQuery('');
-                    }
-                  }}
-                  placeholder="Search in page..."
-                  className="w-32 bg-transparent text-sm text-text-primary placeholder-text-secondary outline-none"
-                  autoFocus
-                />
-                <button
-                  onClick={() => {
-                    setShowStandaloneSearch(false);
-                    setSearchQuery('');
-                  }}
-                  className="p-0.5 rounded hover:bg-bg-tertiary text-text-secondary hover:text-text-primary transition-colors"
-                  title="Close search"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => {
-                  setShowStandaloneSearch(true);
-                  setTimeout(() => standaloneSearchInputRef.current?.focus(), 0);
-                }}
-                className="p-1.5 rounded hover:bg-bg-tertiary text-text-primary transition-colors"
-                title="Search in page (Cmd/Ctrl+F)"
-              >
-                <Search className="w-5 h-5" />
-              </button>
-            )}
-          </div>
-
-          {/* Move to Tab button */}
-          <button
-            onClick={async () => {
-              const win = getCurrentWebviewWindow();
-              // Emit event to main window to create a tab
-              await emit('move-window-to-tab', {
-                label: win.label,
-                page: currentPage,
-              });
-              // Close this window
-              await win.close();
-            }}
-            className="ml-2 p-1.5 rounded bg-accent hover:bg-accent/80 text-white transition-colors"
-            title="Move to Tab"
-          >
-            <PanelTop className="w-5 h-5" />
-          </button>
-        </div>
+        <StandaloneWindowControls
+          currentPage={currentPage}
+          totalPages={totalPages}
+          zoom={zoom}
+          viewMode={viewMode}
+          isTocOpen={isTocOpen}
+          showHistory={showHistory}
+          showStandaloneSearch={showStandaloneSearch}
+          searchQuery={searchQuery}
+          bookmarks={bookmarks}
+          isCurrentPageBookmarked={isCurrentPageBookmarked}
+          canGoBack={canGoBack}
+          canGoForward={canGoForward}
+          standaloneSearchInputRef={standaloneSearchInputRef}
+          goBack={goBack}
+          goForward={goForward}
+          goToPrevPage={goToPrevPage}
+          goToNextPage={goToNextPage}
+          setIsTocOpen={setIsTocOpen}
+          setViewMode={setViewMode}
+          setShowHistory={setShowHistory}
+          toggleBookmark={toggleBookmark}
+          handleZoomIn={handleZoomIn}
+          handleZoomOut={handleZoomOut}
+          setShowStandaloneSearch={setShowStandaloneSearch}
+          setSearchQuery={setSearchQuery}
+        />
       )}
 
       <div className="flex flex-1 overflow-hidden">
@@ -1203,7 +930,7 @@ export default function Home() {
                 setBookmarks((prev) => prev.filter((b) => b.page !== page));
               } else {
                 const chapter = getChapterForPage(page);
-                const label = chapter ? `P${page}: ${chapter}` : `Page ${page}`;
+                const label = getTabLabel(page, chapter);
                 setBookmarks((prev) => [...prev, { page, label, createdAt: Date.now() }]);
               }
             }}

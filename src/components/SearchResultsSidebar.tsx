@@ -1,15 +1,11 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
 import { ExternalLink, X, Loader2 } from 'lucide-react';
+import type { SearchResult } from '@/types';
+import { useAutoScroll } from '@/hooks/useAutoScroll';
 
-export interface SearchResult {
-  page: number;
-  matchIndex: number;
-  contextBefore: string;
-  matchText: string;
-  contextAfter: string;
-}
+// Re-export for backward compatibility
+export type { SearchResult };
 
 interface SearchResultsSidebarProps {
   query: string;
@@ -30,17 +26,7 @@ export default function SearchResultsSidebar({
   onOpenInWindow,
   onClose,
 }: SearchResultsSidebarProps) {
-  const activeItemRef = useRef<HTMLDivElement>(null);
-
-  // Auto-scroll to current search result when currentIndex changes
-  useEffect(() => {
-    if (activeItemRef.current) {
-      activeItemRef.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'nearest',
-      });
-    }
-  }, [currentIndex]);
+  const activeItemRef = useAutoScroll<HTMLDivElement>([currentIndex]);
 
   if (!query) {
     return null;

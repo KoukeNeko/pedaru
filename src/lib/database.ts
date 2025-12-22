@@ -1,43 +1,15 @@
 import Database from '@tauri-apps/plugin-sql';
-import { ViewMode } from '@/components/Settings';
+import type {
+  ViewMode,
+  TabState,
+  WindowState,
+  BookmarkState,
+  HistoryEntry,
+  PdfSessionState,
+} from '@/types';
 
-// Types (matching sessionStorage.ts)
-export interface TabState {
-  page: number;
-  label: string;
-}
-
-export interface WindowState {
-  page: number;
-  zoom: number;
-  viewMode: ViewMode;
-}
-
-export interface BookmarkState {
-  page: number;
-  label: string;
-  createdAt: number;
-}
-
-export interface HistoryEntry {
-  page: number;
-  timestamp: string;
-}
-
-export interface PdfSessionState {
-  filePath?: string;
-  name?: string;
-  lastOpened: number;
-  page: number;
-  zoom: number;
-  viewMode: ViewMode;
-  activeTabIndex: number | null;
-  tabs: TabState[];
-  windows: WindowState[];
-  bookmarks: BookmarkState[];
-  pageHistory?: HistoryEntry[];
-  historyIndex?: number;
-}
+// Re-export types for backward compatibility
+export type { TabState, WindowState, BookmarkState, HistoryEntry, PdfSessionState };
 
 // Constants
 const LAST_OPENED_KEY = 'pedaru_last_opened_path';
