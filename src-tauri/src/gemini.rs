@@ -15,48 +15,52 @@ const GEMINI_API_BASE: &str = "https://generativelanguage.googleapis.com/v1beta"
 // Default Prompts (hardcoded in backend)
 // ============================================================================
 
-const TRANSLATION_PROMPT: &str = r#"Translate and explain the following text, considering the context. Output MUST be in Japanese.
+const TRANSLATION_PROMPT: &str = r#"Translate and explain the following text. Output MUST be in Japanese.
 
-## Context (surrounding text of the selection):
+## Context (for understanding only - DO NOT translate this):
 {context}
 
-## Text to translate:
+## Text to translate (ONLY translate this text):
 {text}
 
-Output in the following JSON format:
+IMPORTANT: The Context section is provided ONLY to help you understand the meaning and usage of the text.
+You must ONLY translate the "Text to translate" section. DO NOT include any translation of the Context in your output.
+
+## JSON Output Format (STRICT - follow exactly):
 {
-  "translation": "Translation result in Japanese",
-  "points": [
-    "Point 1 in Japanese",
-    "Point 2 in Japanese",
-    "Point 3 in Japanese"
-  ]
+  "translation": "Translation result in Japanese (string)",
+  "points": ["Point 1 (string)", "Point 2 (string)", "Point 3 (string)"]
 }
+
+CRITICAL: The "points" field MUST be a flat array of strings. DO NOT use nested objects. Each element in points must be a simple string, not an object.
 
 ## Output Rules:
 - For single words, idioms, or short phrases (no spaces, or 2-3 words):
   - translation: Only the meaning of the word/idiom. NOT a translation of the entire sentence.
-  - points: Include the following elements separately:
-    1. Explanation of the word (common usage, how it's used in this context, etc.) in Japanese
-    2. "原文: [English sentence]" - Highlight the selected word using ***word*** format
-    3. "訳: [Japanese translation]" - Highlight the corresponding Japanese translation using ***訳語*** format
-    4. "類語・言い換え: [synonyms]" - List synonyms or alternative expressions in English with Japanese meanings (e.g., "utilize（活用する）, employ（用いる）, leverage（てこ入れする）")
-  - Example: translation: "活用する、利用する" (NOT the entire sentence translation)
-  - Example: "原文: The goal is to ***harness*** the power of AI."
-  - Example: "訳: 目標はAIの力を***活用する***ことです。"
-  - Example: "類語・言い換え: utilize（活用する）, leverage（活かす）, exploit（利用する）"
+  - points: A flat array of strings containing:
+    1. "単語の意味: [explanation of the word in Japanese]"
+    2. "原文: [English sentence with ***highlighted*** word]"
+    3. "訳: [Japanese translation with ***highlighted*** translation]"
+    4. "類語・言い換え: [synonyms in English with Japanese meanings]"
+  - Example output:
+    {
+      "translation": "活用する、利用する",
+      "points": [
+        "単語の意味: 何かの力や資源を有効に使うこと",
+        "原文: The goal is to ***harness*** the power of AI.",
+        "訳: 目標はAIの力を***活用する***ことです。",
+        "類語・言い換え: utilize（活用する）, leverage（活かす）, exploit（利用する）"
+      ]
+    }
+
 - For sentences or longer text:
   - translation: Full Japanese translation of the text
-  - points: Provide detailed grammatical explanations for complex sentence structures. For each notable grammar point:
-    1. Identify the grammatical structure (e.g., "「in which to...」は関係代名詞whichと不定詞が組み合わさったフォーマルな構文")
-    2. Explain why this form is used and what nuance it conveys
-    3. Show how it could be rewritten in simpler forms if applicable (alternative phrasings)
-    4. Give similar example sentences if helpful
-  - If there are notable vocabulary choices, mention synonyms or alternative expressions that could be used
-  - Focus on structures that learners might find challenging: relative clauses, participle constructions, subjunctive mood, complex prepositions, etc.
-  - Do NOT include original/translation pairs for sentences (that's only for single words)
+  - points: A flat array of strings with grammatical explanations:
+    1. Each point is a single string explaining one grammar structure
+    2. Focus on challenging structures: relative clauses, participle constructions, etc.
+    3. Include synonyms or alternative expressions where helpful
 
-Output only valid JSON. Do not use markdown code blocks."#;
+Output only valid JSON. Do not use markdown code blocks. The points array must contain only strings."#;
 
 const EXPLANATION_PROMPT: &str = r#"Explain the following text in simple, easy-to-understand terms. Output MUST be in Japanese.
 

@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Loader2, Languages, AlertCircle, Settings, GripHorizontal, ChevronDown, ChevronUp, Sparkles, BookOpen, MessageSquare, Cpu } from 'lucide-react';
+import { X, Loader2, Languages, AlertCircle, Settings, GripHorizontal, ChevronDown, ChevronUp, Sparkles, BookOpen, MessageSquare, Cpu, ExternalLink } from 'lucide-react';
+import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { emitTo, listen } from '@tauri-apps/api/event';
 import ReactMarkdown from 'react-markdown';
 import type { TextSelection, GeminiSettings, TranslationResponse } from '@/types';
 import { translateWithGemini, explainTranslation, isGeminiConfigured, getGeminiSettings, GEMINI_MODELS } from '@/lib/settings';
@@ -131,9 +133,11 @@ export default function TranslationPopup({
     return initial;
   }, [calculateInitialPosition, dragOffset]);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest('[data-drag-handle]')) {
       e.preventDefault();
+      // Capture pointer to continue receiving events outside the window
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
       const position = getPosition();
       dragStartRef.current = {
         mouseX: e.clientX,
@@ -148,7 +152,7 @@ export default function TranslationPopup({
   useEffect(() => {
     if (!isDragging) return;
 
-    const handleMouseMove = (e: MouseEvent) => {
+    const handlePointerMove = (e: PointerEvent) => {
       if (!dragStartRef.current) return;
 
       const deltaX = e.clientX - dragStartRef.current.mouseX;
@@ -161,17 +165,17 @@ export default function TranslationPopup({
       });
     };
 
-    const handleMouseUp = () => {
+    const handlePointerUp = () => {
       setIsDragging(false);
       dragStartRef.current = null;
     };
 
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('pointermove', handlePointerMove);
+    document.addEventListener('pointerup', handlePointerUp);
 
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('pointermove', handlePointerMove);
+      document.removeEventListener('pointerup', handlePointerUp);
     };
   }, [isDragging, calculateInitialPosition]);
 
@@ -275,6 +279,47 @@ export default function TranslationPopup({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
+  // Open translation in a new window
+  const handleOpenInNewWindow = useCallback(async () => {
+    if (!translationResponse) return;
+
+    const origin = window.location.origin;
+    const windowLabel = `translation-${Date.now()}`;
+    const url = `${origin}/translation?windowLabel=${encodeURIComponent(windowLabel)}`;
+
+    try {
+      // Listen for ready signal from the new window before sending data
+      const unlisten = await listen<{ windowLabel: string }>('translation-ready', async (event) => {
+        if (event.payload.windowLabel === windowLabel) {
+          unlisten();
+          await emitTo(windowLabel, 'translation-data', {
+            selectedText: selection.selectedText,
+            context: selection.context,
+            translationResponse,
+            autoExplain,
+          });
+          // Close the popup
+          onClose();
+        }
+      });
+
+      const webview = new WebviewWindow(windowLabel, {
+        url,
+        title: 'Translation',
+        width: 600,
+        height: 700,
+        resizable: true,
+        center: true,
+      });
+
+      webview.once('tauri://error', (e) => {
+        console.error('Failed to create translation window:', e);
+        unlisten();
+      });
+    } catch (e) {
+      console.error('Failed to open translation window:', e);
+    }
+  }, [translationResponse, selection.selectedText, selection.context, autoExplain, onClose]);
 
   const position = getPosition();
 
@@ -286,7 +331,7 @@ export default function TranslationPopup({
         left: position.left,
         top: position.top,
       }}
-      onMouseDown={handleMouseDown}
+      onPointerDown={handlePointerDown}
     >
       {/* Header - Draggable */}
       <div
@@ -300,12 +345,23 @@ export default function TranslationPopup({
             Translation
           </span>
         </div>
-        <button
-          onClick={onClose}
-          className="p-1 rounded hover:bg-bg-hover text-text-tertiary hover:text-text-primary transition-colors"
-        >
-          <X className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          {translationResponse && (
+            <button
+              onClick={handleOpenInNewWindow}
+              className="p-1 rounded hover:bg-bg-hover text-text-tertiary hover:text-text-primary transition-colors"
+              title="Open in new window"
+            >
+              <ExternalLink className="w-4 h-4" />
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="p-1 rounded hover:bg-bg-hover text-text-tertiary hover:text-text-primary transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Context (collapsible, for debugging) */}
