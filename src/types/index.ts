@@ -126,3 +126,132 @@ export interface PdfSessionState {
   pageHistory?: HistoryEntry[];
   historyIndex?: number;
 }
+
+// ============================================
+// Google Drive / OAuth Types
+// ============================================
+
+/**
+ * OAuth authentication status
+ */
+export interface AuthStatus {
+  authenticated: boolean;
+  configured: boolean;
+}
+
+/**
+ * A folder from Google Drive
+ */
+export interface DriveFolder {
+  id: string;
+  name: string;
+  modifiedTime?: string;
+}
+
+/**
+ * A stored folder configuration
+ */
+export interface StoredFolder {
+  folderId: string;
+  folderName: string;
+  isActive: boolean;
+  lastSynced?: number;
+}
+
+/**
+ * Result of a sync operation
+ */
+export interface SyncResult {
+  newFiles: number;
+  updatedFiles: number;
+  removedFiles: number;
+}
+
+// ============================================
+// Bookshelf Types
+// ============================================
+
+/**
+ * Download status of a bookshelf item
+ */
+export type DownloadStatus = 'pending' | 'downloading' | 'completed' | 'error';
+
+/**
+ * A bookshelf item (PDF from Google Drive)
+ */
+export interface BookshelfItem {
+  id: number;
+  driveFileId: string;
+  driveFolderId: string;
+  fileName: string;
+  fileSize?: number;
+  thumbnailData?: string;
+  localPath?: string;
+  downloadStatus: DownloadStatus;
+  downloadProgress: number;
+  pdfTitle?: string;
+}
+
+/**
+ * Download progress event
+ */
+export interface DownloadProgress {
+  driveFileId: string;
+  progress: number;
+  downloadedBytes: number;
+  totalBytes: number;
+}
+
+// ============================================
+// Gemini Translation Types
+// ============================================
+
+/**
+ * Available Gemini models
+ */
+export type GeminiModel =
+  | 'gemini-2.0-flash'
+  | 'gemini-2.0-flash-lite'
+  | 'gemini-2.5-flash'
+  | 'gemini-2.5-flash-lite'
+  | 'gemini-2.5-pro'
+  | 'gemini-3-flash-preview'
+  | 'gemini-3-pro-preview';
+
+/**
+ * Gemini model option for UI
+ */
+export interface GeminiModelOption {
+  id: GeminiModel;
+  name: string;
+  description: string;
+}
+
+/**
+ * Gemini translation settings
+ */
+export interface GeminiSettings {
+  apiKey: string;
+  model: string;
+  explanationModel: string;
+  promptWord: string;
+}
+
+/**
+ * Structured translation response from Gemini
+ */
+export interface TranslationResponse {
+  translation: string;
+  points: string[];
+}
+
+/**
+ * Text selection data for translation
+ */
+export interface TextSelection {
+  selectedText: string;
+  context: string;
+  isWord: boolean;
+  position: { x: number; y: number };
+  contextLoading?: boolean;
+}

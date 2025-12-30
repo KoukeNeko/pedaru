@@ -6,6 +6,7 @@ import type { SearchResult, ViewMode } from './types';
  *
  * Handles incremental search, result navigation, and search cancellation
  *
+ * @param pdfDocRef - Ref to the PDF document proxy from pdf.js
  * @param searchQuery - Current search query string
  * @param setSearchQuery - State setter for search query
  * @param searchResults - Array of search results
@@ -24,6 +25,7 @@ import type { SearchResult, ViewMode } from './types';
  * @returns Search functions and PDF document handler
  */
 export function useSearch(
+  pdfDocRef: React.MutableRefObject<any>,
   searchQuery: string,
   setSearchQuery: Dispatch<SetStateAction<string>>,
   searchResults: SearchResult[],
@@ -40,8 +42,6 @@ export function useSearch(
   isStandaloneMode: boolean,
   setViewMode: Dispatch<SetStateAction<ViewMode>>
 ) {
-  // Ref to store PDF document for search operations
-  const pdfDocRef = useRef<any>(null);
 
   // Ref to track current search ID for cancellation
   const searchIdRef = useRef<number>(0);

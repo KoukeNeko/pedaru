@@ -109,10 +109,12 @@ Session saves are debounced (500ms) to avoid excessive database writes. The sess
 - `TocSidebar.tsx` - Table of contents navigation
 - `HistorySidebar.tsx` - Page history list
 - `BookmarkSidebar.tsx` - Bookmark management
+- `BookshelfSidebar.tsx` - Google Drive bookshelf
 - `WindowSidebar.tsx` - Standalone window list
 - `SearchResultsSidebar.tsx` - Full-text search results
 - `CustomTextLayer.tsx` - Custom text layer for PDF.js
-- `Settings.tsx` - View mode and settings panel
+- `TranslationPopup.tsx` - Gemini translation popup
+- `Settings.tsx` - View mode and Gemini settings panel
 
 **Custom Hooks** - `src/hooks/`:
 - `useBookmarks.ts` - Bookmark CRUD operations and cross-window sync
@@ -122,12 +124,16 @@ Session saves are debounced (500ms) to avoid excessive database writes. The sess
 - `useWindowManagement.ts` - Standalone window lifecycle management
 - `usePdfLoader.ts` - PDF loading and session restoration logic
 - `useKeyboardShortcuts.ts` - Centralized keyboard shortcut handling
+- `useTextSelection.ts` - PDF text selection for translation (Cmd+J trigger)
+- `useBookshelf.ts` - Google Drive bookshelf management
+- `useGoogleAuth.ts` - Google OAuth authentication flow
 - `types.ts` - Shared TypeScript types for hooks
 
 **Utility Libraries** - `src/lib/`:
 - `database.ts` - SQLite-based session persistence using tauri-plugin-sql
 - `pdfUtils.ts` - PDF-specific utilities (chapter extraction, etc.)
 - `tabManager.ts` - Tab state management utilities
+- `settings.ts` - Gemini API settings management
 
 ### PDF Processing (Rust Backend)
 
@@ -250,6 +256,8 @@ All shortcuts are handled in `page.tsx` via `useEffect` listeners. macOS uses Cm
 **Tools:**
 - `Cmd/Ctrl+F` - Focus search
 - `Cmd/Ctrl+B` - Toggle bookmark
+- `Cmd/Ctrl+J` - Translate selected text (opens translation popup)
+- `Cmd/Ctrl+E` - Translate with auto-explanation
 - `Ctrl+,` - Navigate back in history
 - `Ctrl+.` - Navigate forward in history
 
@@ -260,6 +268,54 @@ All shortcuts are handled in `page.tsx` via `useEffect` listeners. macOS uses Cm
 - `Escape` - Clear search and close results
 
 When adding new shortcuts, register them in the keyboard event handler and ensure they don't conflict with existing ones.
+
+### Gemini Translation Feature
+
+The app integrates with Google's Gemini API for PDF text translation:
+
+**Architecture:**
+- `src-tauri/src/gemini.rs` - Rust backend for Gemini API calls with JSON output mode
+- `src-tauri/src/settings.rs` - Settings storage (API key, model selection)
+- `src/lib/settings.ts` - Frontend settings API
+- `src/hooks/useTextSelection.ts` - Text selection detection and context extraction
+- `src/components/TranslationPopup.tsx` - Translation UI with collapsible sections
+
+**Translation Flow:**
+1. User selects text in PDF and presses `Cmd+J` (or `Cmd+E` for auto-explanation)
+2. `useTextSelection` extracts selected text and surrounding context from adjacent pages
+3. Frontend calls `translate_with_gemini` Tauri command
+4. Backend sends prompt to Gemini API with `response_mime_type: "application/json"`
+5. Response is parsed into `TranslationResponse { translation, points }`
+6. `TranslationPopup` displays results with ReactMarkdown rendering
+
+**Prompt Behavior:**
+- Single words/phrases: Returns word meaning + original sentence with `***highlighted***` word + translated sentence
+- Full sentences: Returns translation + grammar/structure points
+
+**Model Configuration:**
+- Separate models for translation and explanation (can use faster model for translation, smarter for explanation)
+- Settings stored in SQLite `settings` table
+
+### Google Drive Bookshelf
+
+The bookshelf feature syncs PDFs from Google Drive folders:
+
+**Backend Modules:**
+- `src-tauri/src/oauth.rs` - OAuth 2.0 flow with PKCE
+- `src-tauri/src/google_drive.rs` - Google Drive API client
+- `src-tauri/src/bookshelf.rs` - Bookshelf database and download management
+
+**Frontend:**
+- `src/hooks/useGoogleAuth.ts` - Authentication state management
+- `src/hooks/useBookshelf.ts` - Bookshelf items and sync operations
+- `src/components/BookshelfSidebar.tsx` - Bookshelf UI
+
+**Key Features:**
+- OAuth authentication with device code flow
+- Folder selection and sync tracking
+- Background PDF downloads with progress events
+- Download cancellation support via `AtomicBool` flags
+- Thumbnail generation for bookshelf items
 
 ## Code Patterns
 

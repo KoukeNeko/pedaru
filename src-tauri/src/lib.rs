@@ -11,12 +11,17 @@ use tauri::Manager;
 use tauri_plugin_sql::Builder as SqlBuilder;
 
 // Module declarations
+pub mod bookshelf;
 pub mod db;
 mod db_schema;
 pub mod encoding;
 pub mod error;
+pub mod gemini;
+pub mod google_drive;
 pub mod menu;
+pub mod oauth;
 pub mod pdf;
+pub mod settings;
 pub mod types;
 
 // Re-export public types
@@ -127,6 +132,268 @@ fn refresh_recent_menu(app: tauri::AppHandle) -> Result<(), String> {
     refresh_recent_menu_impl(&app).map_err(|e| e.into_tauri_error())
 }
 
+// ============================================================================
+// Google Drive / OAuth Commands
+// ============================================================================
+
+/// Save OAuth credentials
+#[tauri::command(rename_all = "camelCase")]
+fn save_oauth_credentials(
+    app: tauri::AppHandle,
+    client_id: String,
+    client_secret: String,
+) -> Result<(), String> {
+    oauth::save_credentials(
+        &app,
+        &oauth::OAuthCredentials {
+            client_id,
+            client_secret,
+        },
+    )
+    .map_err(|e| e.into_tauri_error())
+}
+
+/// Start Google OAuth flow
+#[tauri::command]
+fn start_google_auth(app: tauri::AppHandle) -> Result<String, String> {
+    oauth::start_auth_flow(&app).map_err(|e| e.into_tauri_error())
+}
+
+/// Get Google authentication status
+#[tauri::command]
+fn get_google_auth_status(app: tauri::AppHandle) -> Result<oauth::AuthStatus, String> {
+    oauth::get_auth_status(&app).map_err(|e| e.into_tauri_error())
+}
+
+/// Logout from Google
+#[tauri::command]
+fn logout_google(app: tauri::AppHandle) -> Result<(), String> {
+    oauth::clear_tokens(&app).map_err(|e| e.into_tauri_error())
+}
+
+/// List folders in Google Drive
+#[tauri::command(rename_all = "camelCase")]
+async fn list_drive_folders(
+    app: tauri::AppHandle,
+    parent_id: Option<String>,
+) -> Result<Vec<google_drive::DriveFolder>, String> {
+    google_drive::list_folders(&app, parent_id.as_deref())
+        .await
+        .map_err(|e| e.into_tauri_error())
+}
+
+/// Add a folder to sync list
+#[tauri::command(rename_all = "camelCase")]
+fn add_drive_folder(
+    app: tauri::AppHandle,
+    folder_id: String,
+    folder_name: String,
+) -> Result<(), String> {
+    bookshelf::add_sync_folder(&app, &folder_id, &folder_name).map_err(|e| e.into_tauri_error())
+}
+
+/// Remove a folder from sync list
+#[tauri::command(rename_all = "camelCase")]
+fn remove_drive_folder(app: tauri::AppHandle, folder_id: String) -> Result<(), String> {
+    bookshelf::remove_sync_folder(&app, &folder_id).map_err(|e| e.into_tauri_error())
+}
+
+/// Get all synced folders
+#[tauri::command]
+fn get_drive_folders(app: tauri::AppHandle) -> Result<Vec<bookshelf::StoredFolder>, String> {
+    bookshelf::get_sync_folders(&app).map_err(|e| e.into_tauri_error())
+}
+
+/// Sync bookshelf with Google Drive
+#[tauri::command]
+async fn sync_bookshelf(app: tauri::AppHandle) -> Result<bookshelf::SyncResult, String> {
+    let folders = bookshelf::get_sync_folders(&app).map_err(|e| e.into_tauri_error())?;
+
+    let mut new_files = 0i32;
+    let updated_files = 0i32;
+
+    for folder in folders {
+        let files = google_drive::list_pdf_files(&app, &folder.folder_id)
+            .await
+            .map_err(|e| e.into_tauri_error())?;
+
+        for file in &files {
+            let file_size: Option<i64> = file.size.as_ref().and_then(|s| s.parse().ok());
+            bookshelf::upsert_item(
+                &app,
+                &file.id,
+                &folder.folder_id,
+                &file.name,
+                file_size,
+                &file.mime_type,
+                file.modified_time.as_deref(),
+            )
+            .map_err(|e| e.into_tauri_error())?;
+            new_files += 1;
+        }
+
+        bookshelf::update_folder_sync_time(&app, &folder.folder_id)
+            .map_err(|e| e.into_tauri_error())?;
+    }
+
+    Ok(bookshelf::SyncResult {
+        new_files,
+        updated_files,
+        removed_files: 0,
+    })
+}
+
+/// Get all bookshelf items
+#[tauri::command]
+fn get_bookshelf_items(app: tauri::AppHandle) -> Result<Vec<bookshelf::BookshelfItem>, String> {
+    bookshelf::get_items(&app).map_err(|e| e.into_tauri_error())
+}
+
+/// Download a bookshelf item
+#[tauri::command(rename_all = "camelCase")]
+async fn download_bookshelf_item(
+    app: tauri::AppHandle,
+    drive_file_id: String,
+    file_name: String,
+) -> Result<String, String> {
+    // Register the download FIRST (before any async work)
+    bookshelf::register_download(&drive_file_id);
+
+    // Update status to downloading
+    bookshelf::update_download_status(&app, &drive_file_id, "downloading", 0.0, None)
+        .map_err(|e| e.into_tauri_error())?;
+
+    // Get downloads directory
+    let downloads_dir = bookshelf::get_downloads_dir(&app).map_err(|e| {
+        bookshelf::unregister_download(&drive_file_id);
+        e.into_tauri_error()
+    })?;
+    let dest_path = downloads_dir.join(&file_name);
+
+    // Download file
+    let result = google_drive::download_file(&app, &drive_file_id, &dest_path).await;
+
+    // Unregister the download
+    bookshelf::unregister_download(&drive_file_id);
+
+    match result {
+        Ok(()) => {
+            let path_str = dest_path.to_string_lossy().to_string();
+            bookshelf::update_download_status(
+                &app,
+                &drive_file_id,
+                "completed",
+                100.0,
+                Some(&path_str),
+            )
+            .map_err(|e| e.into_tauri_error())?;
+
+            // Try to extract PDF title
+            if let Ok(pdf_info) = get_pdf_info(path_str.clone())
+                && let Some(title) = pdf_info.title
+                && !title.trim().is_empty()
+            {
+                let _ = bookshelf::update_pdf_title(&app, &drive_file_id, &title);
+            }
+
+            Ok(path_str)
+        }
+        Err(e) => {
+            // Check if it was cancelled
+            let error_str = e.into_tauri_error();
+            if error_str.contains("cancelled") {
+                bookshelf::update_download_status(&app, &drive_file_id, "pending", 0.0, None)
+                    .map_err(|e| e.into_tauri_error())?;
+            } else {
+                bookshelf::update_download_status(&app, &drive_file_id, "error", 0.0, None)
+                    .map_err(|e| e.into_tauri_error())?;
+            }
+            Err(error_str)
+        }
+    }
+}
+
+/// Delete local copy of a bookshelf item
+#[tauri::command(rename_all = "camelCase")]
+fn delete_local_copy(app: tauri::AppHandle, drive_file_id: String) -> Result<(), String> {
+    bookshelf::delete_local_copy(&app, &drive_file_id).map_err(|e| e.into_tauri_error())
+}
+
+/// Update bookshelf item thumbnail
+#[tauri::command(rename_all = "camelCase")]
+fn update_bookshelf_thumbnail(
+    app: tauri::AppHandle,
+    drive_file_id: String,
+    thumbnail_data: String,
+) -> Result<(), String> {
+    bookshelf::update_thumbnail(&app, &drive_file_id, &thumbnail_data)
+        .map_err(|e| e.into_tauri_error())
+}
+
+/// Cancel an in-progress download
+#[tauri::command(rename_all = "camelCase")]
+fn cancel_bookshelf_download(drive_file_id: String) -> Result<bool, String> {
+    Ok(bookshelf::cancel_download(&drive_file_id))
+}
+
+// ============================================================================
+// Gemini Translation Commands
+// ============================================================================
+
+/// Get Gemini settings
+#[tauri::command]
+fn get_gemini_settings(app: tauri::AppHandle) -> Result<settings::GeminiSettings, String> {
+    settings::get_gemini_settings(&app).map_err(|e| e.into_tauri_error())
+}
+
+/// Save Gemini settings
+#[tauri::command(rename_all = "camelCase")]
+fn save_gemini_settings(
+    app: tauri::AppHandle,
+    settings_data: settings::GeminiSettings,
+) -> Result<(), String> {
+    settings::save_gemini_settings(&app, &settings_data).map_err(|e| e.into_tauri_error())
+}
+
+/// Translate text using Gemini API
+#[tauri::command(rename_all = "camelCase")]
+async fn translate_with_gemini(
+    app: tauri::AppHandle,
+    text: String,
+    context: String,
+    model_override: Option<String>,
+) -> Result<gemini::TranslationResponse, String> {
+    let gemini_settings = settings::get_gemini_settings(&app).map_err(|e| e.into_tauri_error())?;
+    let model = model_override.as_deref().unwrap_or(&gemini_settings.model);
+
+    gemini::translate_text(&gemini_settings.api_key, model, &text, &context)
+        .await
+        .map_err(|e| e.into_tauri_error())
+}
+
+/// Get a more detailed explanation of a previous translation
+#[tauri::command(rename_all = "camelCase")]
+async fn explain_translation(
+    app: tauri::AppHandle,
+    text: String,
+    previous_translation: String,
+    model_override: Option<String>,
+) -> Result<gemini::TranslationResponse, String> {
+    let gemini_settings = settings::get_gemini_settings(&app).map_err(|e| e.into_tauri_error())?;
+    let model = model_override
+        .as_deref()
+        .unwrap_or(&gemini_settings.explanation_model);
+
+    gemini::explain_translation(
+        &gemini_settings.api_key,
+        model,
+        &text,
+        &previous_translation,
+    )
+    .await
+    .map_err(|e| e.into_tauri_error())
+}
+
 /// Main application entry point
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -157,6 +424,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_shell::init())
         .plugin(
             SqlBuilder::default()
                 .add_migrations("sqlite:pedaru.db", migrations)
@@ -167,12 +435,37 @@ pub fn run() {
             read_pdf_file,
             get_opened_file,
             was_opened_via_event,
-            refresh_recent_menu
+            refresh_recent_menu,
+            // Google Drive / OAuth commands
+            save_oauth_credentials,
+            start_google_auth,
+            get_google_auth_status,
+            logout_google,
+            list_drive_folders,
+            add_drive_folder,
+            remove_drive_folder,
+            get_drive_folders,
+            sync_bookshelf,
+            get_bookshelf_items,
+            download_bookshelf_item,
+            delete_local_copy,
+            update_bookshelf_thumbnail,
+            cancel_bookshelf_download,
+            // Gemini translation commands
+            get_gemini_settings,
+            save_gemini_settings,
+            translate_with_gemini,
+            explain_translation
         ])
         .setup(|app| {
             // Build and set the initial menu
             let menu = build_app_menu(app.handle()).map_err(|e| e.into_tauri_error())?;
             app.set_menu(menu)?;
+
+            // Reset any stale "downloading" statuses from previous sessions
+            if let Err(e) = bookshelf::reset_stale_downloads(app.handle()) {
+                eprintln!("[Pedaru] Failed to reset stale downloads: {}", e);
+            }
 
             Ok(())
         })

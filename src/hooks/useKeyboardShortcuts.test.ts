@@ -30,6 +30,8 @@ describe('useKeyboardShortcuts', () => {
     toggleHeader: () => void;
     setShowHeader: (value: boolean | ((prev: boolean) => boolean)) => void;
     showHeaderTemporarily: () => void;
+    triggerTranslation: () => void;
+    triggerExplanation: () => void;
   };
 
   let mockTabs: Tab[];
@@ -64,6 +66,8 @@ describe('useKeyboardShortcuts', () => {
       toggleHeader: vi.fn(),
       setShowHeader: vi.fn(),
       showHeaderTemporarily: vi.fn(),
+      triggerTranslation: vi.fn(),
+      triggerExplanation: vi.fn(),
     };
 
     mockTabs = [

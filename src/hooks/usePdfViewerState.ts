@@ -42,6 +42,7 @@ export interface UIState {
   isTocOpen: boolean;
   showHistory: boolean;
   showBookmarks: boolean;
+  showBookshelf: boolean;
   showWindows: boolean;
   showHeader: boolean;
   showSearchResults: boolean;
@@ -114,6 +115,7 @@ export interface UISetters {
   setIsTocOpen: Dispatch<SetStateAction<boolean>>;
   setShowHistory: Dispatch<SetStateAction<boolean>>;
   setShowBookmarks: Dispatch<SetStateAction<boolean>>;
+  setShowBookshelf: Dispatch<SetStateAction<boolean>>;
   setShowWindows: Dispatch<SetStateAction<boolean>>;
   setShowHeader: Dispatch<SetStateAction<boolean>>;
   setShowSearchResults: Dispatch<SetStateAction<boolean>>;
@@ -241,6 +243,7 @@ export function usePdfViewerState(): PdfViewerState {
   const [isTocOpen, setIsTocOpen] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showBookmarks, setShowBookmarks] = useState(false);
+  const [showBookshelf, setShowBookshelf] = useState(false);
   const [showWindows, setShowWindows] = useState(false);
   const [showHeader, setShowHeader] = useState(true);
   const [showSearchResults, setShowSearchResults] = useState(false);
@@ -358,6 +361,7 @@ export function usePdfViewerState(): PdfViewerState {
     isTocOpen,
     showHistory,
     showBookmarks,
+    showBookshelf,
     showWindows,
     showHeader,
     showSearchResults,
@@ -412,6 +416,7 @@ export function usePdfViewerState(): PdfViewerState {
     setIsTocOpen,
     setShowHistory,
     setShowBookmarks,
+    setShowBookshelf,
     setShowWindows,
     setShowHeader,
     setShowSearchResults,

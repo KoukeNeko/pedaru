@@ -66,6 +66,10 @@ export function useKeyboardShortcuts({
   setShowHeader,
   headerWasHiddenBeforeSearchRef,
   showHeaderTemporarily,
+
+  // Translation
+  triggerTranslation,
+  triggerExplanation,
 }: {
   // Navigation
   currentPage: number;
@@ -119,6 +123,10 @@ export function useKeyboardShortcuts({
   setShowHeader: Dispatch<SetStateAction<boolean>>;
   headerWasHiddenBeforeSearchRef: React.RefObject<boolean>;
   showHeaderTemporarily: () => void;
+
+  // Translation
+  triggerTranslation: () => void;
+  triggerExplanation: () => void;
 }) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -340,6 +348,22 @@ export function useKeyboardShortcuts({
             }
           }
           break;
+        case 'j':
+        case 'J':
+          // Cmd/Ctrl+J - translate selected text
+          if (e.metaKey || e.ctrlKey) {
+            e.preventDefault();
+            triggerTranslation();
+          }
+          break;
+        case 'e':
+        case 'E':
+          // Cmd/Ctrl+E - translate and explain selected text
+          if (e.metaKey || e.ctrlKey) {
+            e.preventDefault();
+            triggerExplanation();
+          }
+          break;
         case '1':
         case '2':
         case '3':
@@ -403,5 +427,7 @@ export function useKeyboardShortcuts({
     showHeader,
     setShowHeader,
     showHeaderTemporarily,
+    triggerTranslation,
+    triggerExplanation,
   ]);
 }

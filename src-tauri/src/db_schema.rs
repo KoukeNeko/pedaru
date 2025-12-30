@@ -34,5 +34,73 @@ pub fn get_migrations() -> Vec<Migration> {
             sql: "ALTER TABLE sessions ADD COLUMN name TEXT NOT NULL DEFAULT '';",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 3,
+            description: "add google drive integration tables",
+            sql: "-- OAuth credentials and tokens
+                CREATE TABLE IF NOT EXISTS google_auth (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    client_id TEXT NOT NULL,
+                    client_secret TEXT NOT NULL,
+                    access_token TEXT,
+                    refresh_token TEXT,
+                    token_expiry INTEGER,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );
+
+                -- Google Drive folder configuration
+                CREATE TABLE IF NOT EXISTS drive_folders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    folder_id TEXT NOT NULL UNIQUE,
+                    folder_name TEXT NOT NULL,
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    last_synced INTEGER,
+                    created_at INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_drive_folders_folder_id ON drive_folders(folder_id);
+
+                -- Bookshelf items (PDFs from Google Drive)
+                CREATE TABLE IF NOT EXISTS bookshelf (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    drive_file_id TEXT NOT NULL UNIQUE,
+                    drive_folder_id TEXT NOT NULL,
+                    file_name TEXT NOT NULL,
+                    file_size INTEGER,
+                    mime_type TEXT NOT NULL DEFAULT 'application/pdf',
+                    drive_modified_time TEXT,
+                    thumbnail_data TEXT,
+                    local_path TEXT,
+                    download_status TEXT NOT NULL DEFAULT 'pending',
+                    download_progress REAL DEFAULT 0,
+                    last_error TEXT,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_bookshelf_drive_file_id ON bookshelf(drive_file_id);
+                CREATE INDEX IF NOT EXISTS idx_bookshelf_folder_id ON bookshelf(drive_folder_id);
+                CREATE INDEX IF NOT EXISTS idx_bookshelf_download_status ON bookshelf(download_status);",
+            kind: MigrationKind::Up,
+        },
+        // Migration V4: Add pdf_title column to bookshelf
+        Migration {
+            version: 4,
+            description: "add_pdf_title_to_bookshelf",
+            sql: "ALTER TABLE bookshelf ADD COLUMN pdf_title TEXT;",
+            kind: MigrationKind::Up,
+        },
+        // Migration V5: Add settings table for app configuration
+        Migration {
+            version: 5,
+            description: "add_settings_table",
+            sql: "CREATE TABLE IF NOT EXISTS settings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    key TEXT NOT NULL UNIQUE,
+                    value TEXT NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_settings_key ON settings(key);",
+            kind: MigrationKind::Up,
+        },
     ]
 }

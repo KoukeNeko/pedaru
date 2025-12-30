@@ -22,6 +22,15 @@ pub enum PedaruError {
 
     #[error("Configuration error: {0}")]
     Config(#[from] ConfigError),
+
+    #[error("OAuth error: {0}")]
+    OAuth(#[from] OAuthError),
+
+    #[error("Google Drive error: {0}")]
+    GoogleDrive(#[from] GoogleDriveError),
+
+    #[error("Gemini API error: {0}")]
+    Gemini(#[from] GeminiError),
 }
 
 /// PDF-specific errors (loading, parsing, metadata extraction)
@@ -84,6 +93,69 @@ pub enum MenuError {
 pub enum ConfigError {
     #[error("Failed to resolve app config directory: {0}")]
     ConfigDirResolutionFailed(String),
+}
+
+/// OAuth authentication errors
+#[derive(Error, Debug)]
+pub enum OAuthError {
+    #[error("OAuth not configured: client credentials not set")]
+    NotConfigured,
+
+    #[error("OAuth callback server failed to start: {0}")]
+    CallbackServerFailed(String),
+
+    #[error("OAuth authorization failed: {0}")]
+    AuthorizationFailed(String),
+
+    #[error("Token exchange failed: {0}")]
+    TokenExchangeFailed(String),
+
+    #[error("Token refresh failed: {0}")]
+    TokenRefreshFailed(String),
+
+    #[error("HTTP request failed: {0}")]
+    HttpRequestFailed(String),
+
+    #[error("Invalid response: {0}")]
+    InvalidResponse(String),
+}
+
+/// Google Drive API errors
+#[derive(Error, Debug)]
+pub enum GoogleDriveError {
+    #[error("Not authenticated with Google")]
+    NotAuthenticated,
+
+    #[error("API request failed: {0}")]
+    ApiRequestFailed(String),
+
+    #[error("Failed to list files: {0}")]
+    ListFilesFailed(String),
+
+    #[error("Failed to download file: {0}")]
+    DownloadFailed(String),
+
+    #[error("Download cancelled: {0}")]
+    DownloadCancelled(String),
+
+    #[error("File not found: {0}")]
+    FileNotFound(String),
+
+    #[error("Invalid folder ID: {0}")]
+    InvalidFolderId(String),
+}
+
+/// Gemini API errors
+#[derive(Error, Debug)]
+pub enum GeminiError {
+    #[error("API key not configured")]
+    ApiKeyMissing,
+
+    #[error("API request failed: {0}")]
+    ApiRequestFailed(String),
+
+    #[error("Invalid response: {0}")]
+    InvalidResponse(String),
 }
 
 /// Convenience type alias for internal use

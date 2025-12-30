@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { emit } from '@tauri-apps/api/event';
 import { open, confirm, save } from '@tauri-apps/plugin-dialog';
@@ -13,6 +13,7 @@ import HistorySidebar from '@/components/HistorySidebar';
 import WindowSidebar from '@/components/WindowSidebar';
 import BookmarkSidebar from '@/components/BookmarkSidebar';
 import SearchResultsSidebar from '@/components/SearchResultsSidebar';
+import BookshelfSidebar from '@/components/BookshelfSidebar';
 import { StandaloneWindowControls } from '@/components/StandaloneWindowControls';
 import { TabBar } from '@/components/TabBar';
 import type { ViewMode, Bookmark, PdfInfo, TabState, WindowState, PdfSessionState } from '@/types';
@@ -44,7 +45,10 @@ import { usePdfLoader } from '@/hooks/usePdfLoader';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useStartup } from '@/hooks/useStartup';
 import { usePdfViewerState } from '@/hooks/usePdfViewerState';
+import { useTextSelection } from '@/hooks/useTextSelection';
 import type { OpenWindow, Tab, HistoryEntry } from '@/hooks/types';
+import TranslationPopup from '@/components/TranslationPopup';
+import Settings from '@/components/Settings';
 
 export default function Home() {
   // Debug: Log immediately on component mount
@@ -86,8 +90,8 @@ export default function Home() {
   const { currentPage, totalPages, zoom, viewMode, isLoading, isStandaloneMode } = viewer;
   const { setCurrentPage, setTotalPages, setZoom, setViewMode, setIsLoading, setIsStandaloneMode } = viewerSetters;
 
-  const { isTocOpen, showHistory, showBookmarks, showWindows, showHeader, showSearchResults, showStandaloneSearch, sidebarWidth } = ui;
-  const { setIsTocOpen, setShowHistory, setShowBookmarks, setShowWindows, setShowHeader, setShowSearchResults, setShowStandaloneSearch, setSidebarWidth } = uiSetters;
+  const { isTocOpen, showHistory, showBookmarks, showBookshelf, showWindows, showHeader, showSearchResults, showStandaloneSearch, sidebarWidth } = ui;
+  const { setIsTocOpen, setShowHistory, setShowBookmarks, setShowBookshelf, setShowWindows, setShowHeader, setShowSearchResults, setShowStandaloneSearch, setSidebarWidth } = uiSetters;
 
   const searchQuery = search.query;
   const searchResults = search.results;
@@ -203,6 +207,7 @@ export default function Home() {
     handleSearchConfirm,
     handlePdfDocumentLoad,
   } = useSearch(
+    pdfDocRef,
     searchQuery,
     setSearchQuery,
     searchResults,
@@ -219,6 +224,16 @@ export default function Home() {
     isStandaloneMode,
     setViewMode
   );
+
+  // Text selection and translation
+  const { selection, autoExplain, clearSelection, triggerTranslation, triggerExplanation } = useTextSelection(
+    pdfDocRef,
+    currentPage,
+    totalPages
+  );
+
+  // Settings modal state
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   // Close PDF and reset to empty state
   const closePdf = useCallback(() => {
@@ -378,6 +393,8 @@ export default function Home() {
     setShowHeader,
     headerWasHiddenBeforeSearchRef,
     showHeaderTemporarily,
+    triggerTranslation,
+    triggerExplanation,
   });
 
   // Note: loadPdfFromPathInternal and loadPdfFromPath now provided by usePdfLoader hook
@@ -759,6 +776,7 @@ export default function Home() {
           isLoading={isLoading}
           showHistory={showHistory}
           showBookmarks={showBookmarks}
+          showBookshelf={showBookshelf}
           searchQuery={searchQuery}
           searchResultCount={searchResults.length}
           currentSearchIndex={currentSearchIndex}
@@ -773,6 +791,7 @@ export default function Home() {
           onToggleHistory={() => setShowHistory((prev) => !prev)}
           onToggleWindows={() => setShowWindows((prev) => !prev)}
           onToggleBookmarks={() => setShowBookmarks((prev) => !prev)}
+          onToggleBookshelf={() => setShowBookshelf((prev) => !prev)}
           onSearchChange={handleSearchChange}
           onSearchPrev={handleSearchPrev}
           onSearchNext={handleSearchNext}
@@ -781,6 +800,7 @@ export default function Home() {
           bookmarkCount={bookmarks.length}
           onCloseAllWindows={closeAllWindows}
           showWindows={showWindows}
+          onOpenSettings={() => setShowSettingsModal(true)}
         />
       )}
 
@@ -911,6 +931,16 @@ export default function Home() {
           </div>
         )}
 
+        {/* Bookshelf sidebar - shown separately from other sidebars */}
+        {showBookshelf && !isStandaloneMode && (
+          <div
+            className="flex flex-col overflow-hidden shrink-0 border-r border-bg-tertiary bg-bg-secondary"
+            style={{ width: sidebarWidth, minWidth: 280, maxWidth: 600 }}
+          >
+            <BookshelfSidebar onOpenPdf={loadPdfFromPath} />
+          </div>
+        )}
+
         {/* Main viewer */}
         <div className="flex-1 min-w-0 relative flex flex-col">
           <PdfViewer
@@ -966,6 +996,24 @@ export default function Home() {
           />
         )}
       </div>
+
+      {/* Translation popup - don't show when settings modal is open */}
+      {selection && !showSettingsModal && (
+        <TranslationPopup
+          selection={selection}
+          autoExplain={autoExplain}
+          onClose={clearSelection}
+          onOpenSettings={() => setShowSettingsModal(true)}
+        />
+      )}
+
+      {/* Settings modal */}
+      <Settings
+        isOpen={showSettingsModal}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        onClose={() => setShowSettingsModal(false)}
+      />
     </main>
   );
 }

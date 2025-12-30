@@ -15,7 +15,9 @@ import {
   X,
   AppWindow,
   XSquare,
-  Bookmark
+  Bookmark,
+  Library,
+  Settings
 } from 'lucide-react';
 import { ViewMode } from './Settings';
 
@@ -30,6 +32,7 @@ interface HeaderProps {
   showHistory: boolean;
   showWindows: boolean;
   showBookmarks: boolean;
+  showBookshelf: boolean;
   searchQuery: string;
   searchResultCount: number;
   currentSearchIndex: number;
@@ -47,10 +50,12 @@ interface HeaderProps {
   onToggleHistory: () => void;
   onToggleWindows: () => void;
   onToggleBookmarks: () => void;
+  onToggleBookshelf: () => void;
   onSearchChange: (query: string) => void;
   onSearchPrev: () => void;
   onSearchNext: () => void;
   onCloseAllWindows: () => void;
+  onOpenSettings: () => void;
 }
 
 export default function Header({
@@ -64,6 +69,7 @@ export default function Header({
   showHistory,
   showWindows,
   showBookmarks,
+  showBookshelf,
   searchQuery,
   searchResultCount,
   currentSearchIndex,
@@ -81,10 +87,12 @@ export default function Header({
   onToggleHistory,
   onToggleWindows,
   onToggleBookmarks,
+  onToggleBookshelf,
   onSearchChange,
   onSearchPrev,
   onSearchNext,
   onCloseAllWindows,
+  onOpenSettings,
 }: HeaderProps) {
   const isPdfLoaded = totalPages > 0;
 
@@ -102,6 +110,14 @@ export default function Header({
           ) : (
             <FileUp className="w-4 h-4" />
           )}
+        </button>
+        <button
+          onClick={onToggleBookshelf}
+          className={`flex items-center justify-center p-2 rounded-lg bg-bg-tertiary hover:bg-bg-hover text-text-primary transition-colors ${showBookshelf ? 'border border-accent text-accent' : 'border border-transparent'}`}
+          title={showBookshelf ? 'Hide Bookshelf' : 'Show Bookshelf'}
+          aria-label={showBookshelf ? 'Hide Bookshelf' : 'Show Bookshelf'}
+        >
+          <Library className="w-4 h-4" />
         </button>
         {(pdfTitle || fileName) && (
           <span className="text-text-secondary text-sm truncate max-w-[200px]" title={pdfTitle || undefined}>
@@ -313,6 +329,18 @@ export default function Header({
             <Columns className="w-4 h-4" />
           </button>
         </div>
+
+        <div className="w-px h-6 bg-bg-tertiary mx-2" />
+
+        {/* Settings */}
+        <button
+          onClick={onOpenSettings}
+          className="p-2 rounded-lg bg-bg-tertiary hover:bg-bg-hover text-text-primary transition-colors"
+          title="Settings"
+          aria-label="Settings"
+        >
+          <Settings className="w-5 h-5" />
+        </button>
       </div>
     </header>
   );
