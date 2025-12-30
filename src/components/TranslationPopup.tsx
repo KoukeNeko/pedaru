@@ -96,6 +96,8 @@ export default function TranslationPopup({
     const popupWidth = 600;
     const popupMaxHeight = 700;
     const margin = 10;
+    const headerHeight = 56; // h-14 = 56px
+    const minTop = headerHeight + margin; // Ensure popup doesn't overlap with header
 
     let left = x - popupWidth / 2;
     if (left < margin) {
@@ -105,11 +107,13 @@ export default function TranslationPopup({
     }
 
     let top = y;
+    // First, ensure popup doesn't go below viewport
     if (top + popupMaxHeight > window.innerHeight - margin) {
       top = selection.position.y - popupMaxHeight - 40;
-      if (top < margin) {
-        top = margin;
-      }
+    }
+    // Then, ensure popup doesn't overlap with header (this takes priority)
+    if (top < minTop) {
+      top = minTop;
     }
 
     return { left, top };

@@ -48,6 +48,7 @@ import { usePdfViewerState } from '@/hooks/usePdfViewerState';
 import { useTextSelection } from '@/hooks/useTextSelection';
 import type { OpenWindow, Tab, HistoryEntry } from '@/hooks/types';
 import TranslationPopup from '@/components/TranslationPopup';
+import ContextMenu from '@/components/ContextMenu';
 import Settings from '@/components/Settings';
 
 export default function Home() {
@@ -235,11 +236,59 @@ export default function Home() {
   // Settings modal state
   const [showSettingsModal, setShowSettingsModal] = useState(false);
 
+  // Context menu state
+  const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
+
   // Close PDF and reset to empty state
   const closePdf = useCallback(() => {
     console.log('[closePdf] Closing PDF and resetting state');
     resetAllState();
   }, [resetAllState]);
+
+  // Context menu handlers
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    // Only show context menu if there's selected text
+    const windowSelection = window.getSelection();
+    if (!windowSelection || windowSelection.isCollapsed) {
+      return;
+    }
+
+    const selectedText = windowSelection.toString().trim();
+    if (!selectedText || selectedText.length === 0) {
+      return;
+    }
+
+    // Check if selection is within the PDF viewer
+    const range = windowSelection.getRangeAt(0);
+    const container = range.commonAncestorContainer;
+    const pdfViewer = document.getElementById('pdf-viewer-container');
+    if (!pdfViewer || !pdfViewer.contains(container as Node)) {
+      return;
+    }
+
+    e.preventDefault();
+    setContextMenuPosition({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  const handleContextMenuCopy = useCallback(() => {
+    const windowSelection = window.getSelection();
+    if (windowSelection) {
+      const selectedText = windowSelection.toString();
+      navigator.clipboard.writeText(selectedText);
+    }
+  }, []);
+
+  const handleContextMenuTranslate = useCallback(() => {
+    triggerTranslation(false);
+  }, [triggerTranslation]);
+
+  const handleContextMenuExplain = useCallback(() => {
+    triggerExplanation();
+  }, [triggerExplanation]);
+
+  const closeContextMenu = useCallback(() => {
+    setContextMenuPosition(null);
+  }, []);
 
   const {
     addTabFromCurrent,
@@ -942,7 +991,7 @@ export default function Home() {
         )}
 
         {/* Main viewer */}
-        <div className="flex-1 min-w-0 relative flex flex-col">
+        <div className="flex-1 min-w-0 relative flex flex-col" onContextMenu={handleContextMenu}>
           <PdfViewer
             fileData={fileData}
             currentPage={currentPage}
@@ -1004,6 +1053,17 @@ export default function Home() {
           autoExplain={autoExplain}
           onClose={clearSelection}
           onOpenSettings={() => setShowSettingsModal(true)}
+        />
+      )}
+
+      {/* Context menu */}
+      {contextMenuPosition && (
+        <ContextMenu
+          position={contextMenuPosition}
+          onCopy={handleContextMenuCopy}
+          onTranslate={handleContextMenuTranslate}
+          onExplain={handleContextMenuExplain}
+          onClose={closeContextMenu}
         />
       )}
 
