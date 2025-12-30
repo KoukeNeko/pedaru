@@ -121,10 +121,16 @@ export default function TranslationPopup({
 
   const getPosition = useCallback(() => {
     const initial = calculateInitialPosition();
+    const headerHeight = 56; // h-14 = 56px
+    const margin = 10;
+    const minTop = headerHeight + margin;
+
     if (dragOffset) {
+      const newTop = initial.top + dragOffset.y;
       return {
         left: initial.left + dragOffset.x,
-        top: initial.top + dragOffset.y,
+        // Ensure popup doesn't overlap with header even after dragging
+        top: Math.max(newTop, minTop),
       };
     }
     return initial;
