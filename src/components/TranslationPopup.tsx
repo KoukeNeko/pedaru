@@ -5,7 +5,7 @@ import { X, Loader2, Languages, AlertCircle, Settings, GripHorizontal, ChevronDo
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { emitTo, listen } from '@tauri-apps/api/event';
 import ReactMarkdown from 'react-markdown';
-import type { TextSelection, GeminiSettings, TranslationResponse } from '@/types';
+import type { TextSelection, GeminiSettings, TranslationResponse, ViewMode } from '@/types';
 import { translateWithGemini, explainTranslation, isGeminiConfigured, getGeminiSettings, GEMINI_MODELS } from '@/lib/settings';
 
 interface TranslationPopupProps {
@@ -13,6 +13,8 @@ interface TranslationPopupProps {
   autoExplain?: boolean;
   onClose: () => void;
   onOpenSettings?: () => void;
+  viewMode?: ViewMode;
+  currentPage?: number;
 }
 
 // Custom components for ReactMarkdown to render ***text*** with yellow highlight
@@ -78,6 +80,8 @@ export default function TranslationPopup({
   autoExplain = false,
   onClose,
   onOpenSettings,
+  viewMode = 'single',
+  currentPage = 1,
 }: TranslationPopupProps) {
   const [translationResponse, setTranslationResponse] = useState<TranslationResponse | null>(null);
   const [explanationPoints, setExplanationPoints] = useState<string[] | null>(null);
@@ -85,60 +89,74 @@ export default function TranslationPopup({
   const [isExplaining, setIsExplaining] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isConfigured, setIsConfigured] = useState(true);
-  const [dragOffset, setDragOffset] = useState<{ x: number; y: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [showContext, setShowContext] = useState(false);
   const [geminiSettings, setGeminiSettingsState] = useState<GeminiSettings | null>(null);
   const popupRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef<{ mouseX: number; mouseY: number; popupX: number; popupY: number } | null>(null);
+  const initializedRef = useRef(false);
 
-  // Calculate initial popup position
+  // Calculate initial popup position (only used on first render)
   const calculateInitialPosition = useCallback(() => {
-    const { x, y } = selection.position;
+    const { x, y } = selection.position; // x = right edge of selection + 10, y = top of selection
     const popupWidth = 600;
-    const popupMaxHeight = 700;
     const margin = 10;
     const headerHeight = 56; // h-14 = 56px
     const minTop = headerHeight + margin; // Ensure popup doesn't overlap with header
 
-    let left = x - popupWidth / 2;
-    if (left < margin) {
-      left = margin;
-    } else if (left + popupWidth > window.innerWidth - margin) {
-      left = window.innerWidth - popupWidth - margin;
+    let left: number;
+
+    if (viewMode === 'two-column') {
+      // In two-column mode, determine if selection is on left or right page
+      const selectionPage = selection.pageNumber ?? currentPage;
+      // Left page (currentPage) -> show on right side
+      // Right page (currentPage + 1) -> show on left side
+      const isLeftPage = selectionPage === currentPage;
+
+      if (isLeftPage) {
+        // Show on right side of viewport
+        left = window.innerWidth - popupWidth - margin;
+      } else {
+        // Show on left side of viewport
+        left = margin;
+      }
+    } else {
+      // Single page mode: show to the right of selection
+      left = x;
+
+      // If popup would go off right edge, position from right edge
+      if (left + popupWidth > window.innerWidth - margin) {
+        left = window.innerWidth - popupWidth - margin;
+      }
+
+      // Ensure left is not negative
+      if (left < margin) {
+        left = margin;
+      }
     }
 
-    let top = y;
-    // First, ensure popup doesn't go below viewport
-    if (top + popupMaxHeight > window.innerHeight - margin) {
-      top = selection.position.y - popupMaxHeight - 40;
-    }
-    // Then, ensure popup doesn't overlap with header (this takes priority)
-    if (top < minTop) {
-      top = minTop;
-    }
+    // Ensure popup is always below the header
+    const top = Math.max(y, minTop);
 
     return { left, top };
-  }, [selection.position]);
+  }, [selection.position, selection.pageNumber, viewMode, currentPage]);
 
-  const getPosition = useCallback(() => {
-    const initial = calculateInitialPosition();
+  // Position state - initialized once, updated only by dragging
+  const [position, setPosition] = useState<{ left: number; top: number }>(() => calculateInitialPosition());
 
-    if (dragOffset) {
-      return {
-        left: initial.left + dragOffset.x,
-        top: initial.top + dragOffset.y,
-      };
+  // Only update position on first mount, not on subsequent selection changes
+  useEffect(() => {
+    if (!initializedRef.current) {
+      initializedRef.current = true;
     }
-    return initial;
-  }, [calculateInitialPosition, dragOffset]);
+    // Don't update position when selection changes - keep the popup in place
+  }, [selection]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest('[data-drag-handle]')) {
       e.preventDefault();
       // Capture pointer to continue receiving events outside the window
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
-      const position = getPosition();
       dragStartRef.current = {
         mouseX: e.clientX,
         mouseY: e.clientY,
@@ -147,7 +165,7 @@ export default function TranslationPopup({
       };
       setIsDragging(true);
     }
-  }, [getPosition]);
+  }, [position]);
 
   useEffect(() => {
     if (!isDragging) return;
@@ -157,11 +175,10 @@ export default function TranslationPopup({
 
       const deltaX = e.clientX - dragStartRef.current.mouseX;
       const deltaY = e.clientY - dragStartRef.current.mouseY;
-      const initial = calculateInitialPosition();
 
-      setDragOffset({
-        x: dragStartRef.current.popupX - initial.left + deltaX,
-        y: dragStartRef.current.popupY - initial.top + deltaY,
+      setPosition({
+        left: dragStartRef.current.popupX + deltaX,
+        top: dragStartRef.current.popupY + deltaY,
       });
     };
 
@@ -177,7 +194,7 @@ export default function TranslationPopup({
       document.removeEventListener('pointermove', handlePointerMove);
       document.removeEventListener('pointerup', handlePointerUp);
     };
-  }, [isDragging, calculateInitialPosition]);
+  }, [isDragging]);
 
   // Initial translation - wait for context to be loaded
   useEffect(() => {
@@ -320,8 +337,6 @@ export default function TranslationPopup({
       console.error('Failed to open translation window:', e);
     }
   }, [translationResponse, selection.selectedText, selection.context, autoExplain, onClose]);
-
-  const position = getPosition();
 
   return (
     <div

@@ -283,11 +283,11 @@ export function useTextSelection(
     // Determine if word or sentence
     const isWord = isWordSelection(selectedText);
 
-    // Get position for popup
+    // Get position for popup (right side of selection)
     const rect = range.getBoundingClientRect();
     const position = {
-      x: rect.left + rect.width / 2,
-      y: rect.bottom + 10,
+      x: rect.right + 10,
+      y: rect.top,
     };
 
     // Set auto-explain flag if Cmd+E was used
@@ -300,6 +300,7 @@ export function useTextSelection(
       isWord,
       position,
       contextLoading: true,
+      pageNumber: selectionPage,
     });
 
     // Get context asynchronously and update (using selection page and offset for accurate positioning)
@@ -310,6 +311,7 @@ export function useTextSelection(
       isWord,
       position,
       contextLoading: false,
+      pageNumber: selectionPage,
     });
   }, [currentPage, getContext, getSelectionInfo, isWordSelection]);
 

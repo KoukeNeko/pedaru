@@ -1053,6 +1053,8 @@ export default function Home() {
           autoExplain={autoExplain}
           onClose={clearSelection}
           onOpenSettings={() => setShowSettingsModal(true)}
+          viewMode={viewMode}
+          currentPage={currentPage}
         />
       )}
 

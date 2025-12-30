@@ -254,4 +254,5 @@ export interface TextSelection {
   isWord: boolean;
   position: { x: number; y: number };
   contextLoading?: boolean;
+  pageNumber?: number; // Page number where the selection was made
 }

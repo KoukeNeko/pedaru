@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { listen, emit } from '@tauri-apps/api/event';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { useSearchParams } from 'next/navigation';
@@ -72,7 +72,20 @@ function CollapsibleSection({
   );
 }
 
-export default function TranslationPage() {
+// Loading fallback component
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen bg-bg-primary flex items-center justify-center">
+      <div className="flex items-center gap-2 text-text-secondary">
+        <Loader2 className="w-5 h-5 animate-spin" />
+        <span>Loading...</span>
+      </div>
+    </div>
+  );
+}
+
+// Inner component that uses useSearchParams
+function TranslationContent() {
   const searchParams = useSearchParams();
   const windowLabel = searchParams.get('windowLabel');
 
@@ -305,5 +318,14 @@ export default function TranslationPage() {
       </div>
       </div>
     </div>
+  );
+}
+
+// Main page component with Suspense boundary
+export default function TranslationPage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <TranslationContent />
+    </Suspense>
   );
 }
