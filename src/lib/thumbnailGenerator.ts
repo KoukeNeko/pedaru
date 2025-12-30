@@ -2,8 +2,6 @@
  * Thumbnail generator for PDF files using PDF.js
  */
 
-import { pdfjs } from 'react-pdf';
-
 // Thumbnail dimensions
 const THUMBNAIL_WIDTH = 200;
 const THUMBNAIL_HEIGHT = 280; // Approximately 4:3 aspect ratio for PDF pages
@@ -14,6 +12,9 @@ const THUMBNAIL_HEIGHT = 280; // Approximately 4:3 aspect ratio for PDF pages
  * @returns Base64 encoded PNG image data (without data: prefix)
  */
 export async function generateThumbnail(pdfData: Uint8Array): Promise<string> {
+  // Dynamic import to avoid SSR issues with pdfjs-dist
+  const { pdfjs } = await import('react-pdf');
+
   // Load the PDF document
   const pdf = await pdfjs.getDocument({ data: pdfData }).promise;
 
