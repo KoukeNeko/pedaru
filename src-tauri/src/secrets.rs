@@ -9,7 +9,7 @@
 use crate::error::PedaruError;
 
 /// Service name for keyring storage
-const KEYRING_SERVICE: &str = "com.togatoga.pedaru";
+const KEYRING_SERVICE: &str = "pedaru";
 
 /// Keys for secrets stored in keyring
 pub mod keys {
