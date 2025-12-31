@@ -5,6 +5,51 @@
 
 use encoding_rs::SHIFT_JIS;
 
+/// Check if bytes represent a UTF-16BE encoded string (with BOM)
+///
+/// UTF-16BE strings in PDF start with the byte order mark (BOM) 0xFE 0xFF.
+pub fn is_utf16be(bytes: &[u8]) -> bool {
+    bytes.len() >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF
+}
+
+/// Decode UTF-16BE bytes to a String
+///
+/// Expects bytes with or without BOM. If BOM is present, it is skipped.
+/// Handles odd-length byte arrays gracefully by ignoring the trailing byte.
+pub fn decode_utf16be(bytes: &[u8]) -> Option<String> {
+    // Skip BOM if present
+    let data = if is_utf16be(bytes) {
+        &bytes[2..]
+    } else {
+        bytes
+    };
+
+    let utf16: Vec<u16> = data
+        .chunks(2)
+        .filter_map(|chunk| {
+            if chunk.len() == 2 {
+                Some(u16::from_be_bytes([chunk[0], chunk[1]]))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    String::from_utf16(&utf16).ok()
+}
+
+/// Decode bytes that may be UTF-16BE with BOM, or UTF-8/ASCII otherwise
+///
+/// This is a convenience function for decoding PDF string bytes that
+/// could be either UTF-16BE (with BOM) or plain UTF-8/ASCII.
+pub fn decode_utf16be_or_utf8(bytes: &[u8]) -> Option<String> {
+    if is_utf16be(bytes) {
+        decode_utf16be(bytes)
+    } else {
+        Some(String::from_utf8_lossy(bytes).to_string())
+    }
+}
+
 /// Decode a PDF string object to a Rust String
 ///
 /// PDF strings can be encoded in various formats:
@@ -26,19 +71,9 @@ pub fn decode_pdf_string(obj: &lopdf::Object) -> Option<String> {
             );
 
             // Try UTF-16BE first (starts with BOM 0xFE 0xFF)
-            if bytes.len() >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF {
+            if is_utf16be(bytes) {
                 eprintln!("[Pedaru] Detected UTF-16BE");
-                let utf16: Vec<u16> = bytes[2..]
-                    .chunks(2)
-                    .filter_map(|chunk| {
-                        if chunk.len() == 2 {
-                            Some(u16::from_be_bytes([chunk[0], chunk[1]]))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-                let result = String::from_utf16(&utf16).ok();
+                let result = decode_utf16be(bytes);
                 eprintln!("[Pedaru] UTF-16BE result: {:?}", result);
                 result
             } else if let Ok(s) = String::from_utf8(bytes.clone()) {
@@ -124,18 +159,8 @@ pub fn decode_pdf_string(obj: &lopdf::Object) -> Option<String> {
 pub fn decode_name_string(obj: &lopdf::Object) -> Option<String> {
     match obj {
         lopdf::Object::String(bytes, _) => {
-            if bytes.len() >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF {
-                let utf16: Vec<u16> = bytes[2..]
-                    .chunks(2)
-                    .filter_map(|chunk| {
-                        if chunk.len() == 2 {
-                            Some(u16::from_be_bytes([chunk[0], chunk[1]]))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-                String::from_utf16(&utf16).ok()
+            if is_utf16be(bytes) {
+                decode_utf16be(bytes)
             } else if let Ok(s) = String::from_utf8(bytes.clone()) {
                 Some(s)
             } else {

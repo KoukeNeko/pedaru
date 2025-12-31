@@ -74,6 +74,9 @@ pub enum DatabaseError {
         source: rusqlite::Error,
     },
 
+    #[error("Failed to execute query: {0}")]
+    QueryFailed(String),
+
     #[error("Database not found at expected location")]
     NotFound,
 }

@@ -2,11 +2,9 @@
 //!
 //! This module handles storing and retrieving app settings from the SQLite database.
 
-use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
-use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::db::get_db_path;
+use crate::db::{now_timestamp, open_db};
 use crate::error::{DatabaseError, PedaruError};
 
 // ============================================================================
@@ -74,19 +72,6 @@ impl Default for GeminiSettings {
 // ============================================================================
 // Database Operations
 // ============================================================================
-
-fn now_timestamp() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64
-}
-
-fn open_db(app: &tauri::AppHandle) -> Result<Connection, PedaruError> {
-    let db_path = get_db_path(app)?;
-    Connection::open(&db_path)
-        .map_err(|source| PedaruError::Database(DatabaseError::OpenFailed { source }))
-}
 
 /// Get a setting value by key
 pub fn get_setting(app: &tauri::AppHandle, key: &str) -> Result<Option<String>, PedaruError> {

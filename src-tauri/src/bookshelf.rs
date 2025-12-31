@@ -3,15 +3,14 @@
 //! This module handles bookshelf database operations and download management
 //! for PDFs synced from Google Drive.
 
-use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use tauri::{AppHandle, Manager};
 
-use crate::db::get_db_path;
-use crate::error::{DatabaseError, GoogleDriveError, IoError, PedaruError};
+use crate::db::{now_timestamp, open_db};
+use crate::error::{DatabaseError, IoError, PedaruError};
 
 // ============================================================================
 // Types
@@ -119,25 +118,6 @@ pub fn get_downloads_dir(app: &AppHandle) -> Result<std::path::PathBuf, PedaruEr
 }
 
 // ============================================================================
-// Database Helper
-// ============================================================================
-
-/// Open a database connection
-fn open_db(app: &AppHandle) -> Result<Connection, PedaruError> {
-    let db_path = get_db_path(app)?;
-    Connection::open(&db_path)
-        .map_err(|e| PedaruError::Database(DatabaseError::OpenFailed { source: e }))
-}
-
-/// Get current Unix timestamp
-fn now_timestamp() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64
-}
-
-// ============================================================================
 // Folder Operations
 // ============================================================================
 
@@ -156,7 +136,7 @@ pub fn add_sync_folder(
            is_active = 1",
         rusqlite::params![folder_id, folder_name, now_timestamp()],
     )
-    .map_err(|e| PedaruError::GoogleDrive(GoogleDriveError::ApiRequestFailed(e.to_string())))?;
+    .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
     Ok(())
 }
 
@@ -167,7 +147,7 @@ pub fn remove_sync_folder(app: &AppHandle, folder_id: &str) -> Result<(), Pedaru
         "UPDATE drive_folders SET is_active = 0 WHERE folder_id = ?1",
         [folder_id],
     )
-    .map_err(|e| PedaruError::GoogleDrive(GoogleDriveError::ApiRequestFailed(e.to_string())))?;
+    .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
     Ok(())
 }
 
@@ -181,7 +161,7 @@ pub fn get_sync_folders(app: &AppHandle) -> Result<Vec<StoredFolder>, PedaruErro
              WHERE is_active = 1
              ORDER BY folder_name",
         )
-        .map_err(|e| PedaruError::GoogleDrive(GoogleDriveError::ApiRequestFailed(e.to_string())))?;
+        .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
 
     let folders = stmt
         .query_map([], |row| {
@@ -192,7 +172,7 @@ pub fn get_sync_folders(app: &AppHandle) -> Result<Vec<StoredFolder>, PedaruErro
                 last_synced: row.get(3)?,
             })
         })
-        .map_err(|e| PedaruError::GoogleDrive(GoogleDriveError::ApiRequestFailed(e.to_string())))?
+        .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?
         .filter_map(|r| r.ok())
         .collect();
 
@@ -206,7 +186,7 @@ pub fn update_folder_sync_time(app: &AppHandle, folder_id: &str) -> Result<(), P
         "UPDATE drive_folders SET last_synced = ?1 WHERE folder_id = ?2",
         rusqlite::params![now_timestamp(), folder_id],
     )
-    .map_err(|e| PedaruError::GoogleDrive(GoogleDriveError::ApiRequestFailed(e.to_string())))?;
+    .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
     Ok(())
 }
 
@@ -248,7 +228,7 @@ pub fn upsert_item(
             now
         ],
     )
-    .map_err(|e| PedaruError::GoogleDrive(GoogleDriveError::ApiRequestFailed(e.to_string())))?;
+    .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
 
     Ok(())
 }
@@ -263,7 +243,7 @@ pub fn get_items(app: &AppHandle) -> Result<Vec<BookshelfItem>, PedaruError> {
              FROM bookshelf
              ORDER BY file_name",
         )
-        .map_err(|e| PedaruError::GoogleDrive(GoogleDriveError::ApiRequestFailed(e.to_string())))?;
+        .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
 
     let items = stmt
         .query_map([], |row| {
@@ -280,7 +260,7 @@ pub fn get_items(app: &AppHandle) -> Result<Vec<BookshelfItem>, PedaruError> {
                 pdf_title: row.get(9)?,
             })
         })
-        .map_err(|e| PedaruError::GoogleDrive(GoogleDriveError::ApiRequestFailed(e.to_string())))?
+        .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?
         .filter_map(|r| r.ok())
         .collect();
 
@@ -305,7 +285,7 @@ pub fn update_download_status(
          WHERE drive_file_id = ?5",
         rusqlite::params![status, progress, local_path, now_timestamp(), drive_file_id],
     )
-    .map_err(|e| PedaruError::GoogleDrive(GoogleDriveError::ApiRequestFailed(e.to_string())))?;
+    .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
     Ok(())
 }
 
@@ -320,7 +300,7 @@ pub fn update_thumbnail(
         "UPDATE bookshelf SET thumbnail_data = ?1, updated_at = ?2 WHERE drive_file_id = ?3",
         rusqlite::params![thumbnail_data, now_timestamp(), drive_file_id],
     )
-    .map_err(|e| PedaruError::GoogleDrive(GoogleDriveError::ApiRequestFailed(e.to_string())))?;
+    .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
     Ok(())
 }
 
@@ -335,7 +315,7 @@ pub fn update_pdf_title(
         "UPDATE bookshelf SET pdf_title = ?1, updated_at = ?2 WHERE drive_file_id = ?3",
         rusqlite::params![pdf_title, now_timestamp(), drive_file_id],
     )
-    .map_err(|e| PedaruError::GoogleDrive(GoogleDriveError::ApiRequestFailed(e.to_string())))?;
+    .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
     Ok(())
 }
 
@@ -376,7 +356,7 @@ pub fn delete_local_copy(app: &AppHandle, drive_file_id: &str) -> Result<(), Ped
          WHERE drive_file_id = ?2",
         rusqlite::params![now_timestamp(), drive_file_id],
     )
-    .map_err(|e| PedaruError::GoogleDrive(GoogleDriveError::ApiRequestFailed(e.to_string())))?;
+    .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
 
     Ok(())
 }
@@ -388,6 +368,6 @@ pub fn reset_stale_downloads(app: &AppHandle) -> Result<(), PedaruError> {
         "UPDATE bookshelf SET download_status = 'pending', download_progress = 0 WHERE download_status = 'downloading'",
         [],
     )
-    .map_err(|e| PedaruError::GoogleDrive(GoogleDriveError::ApiRequestFailed(e.to_string())))?;
+    .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
     Ok(())
 }

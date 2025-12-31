@@ -5,7 +5,7 @@
 //! - Named destination resolution
 //! - Page number resolution from PDF destinations
 
-use crate::encoding::{decode_name_string, decode_pdf_string};
+use crate::encoding::{decode_name_string, decode_pdf_string, decode_utf16be_or_utf8};
 use crate::types::TocEntry;
 use lopdf::Document;
 use std::collections::HashMap;
@@ -159,23 +159,8 @@ pub fn get_page_number_from_dest(
             }
         }
         lopdf::Object::String(bytes, _) | lopdf::Object::Name(bytes) => {
-            // Named destination
-            let name = if bytes.len() >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF {
-                let utf16: Vec<u16> = bytes[2..]
-                    .chunks(2)
-                    .filter_map(|chunk| {
-                        if chunk.len() == 2 {
-                            Some(u16::from_be_bytes([chunk[0], chunk[1]]))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-                String::from_utf16(&utf16).ok()
-            } else {
-                Some(String::from_utf8_lossy(bytes).to_string())
-            };
-            name.and_then(|n| named_dests.get(&n).copied())
+            // Named destination - decode UTF-16BE or UTF-8/ASCII
+            decode_utf16be_or_utf8(bytes).and_then(|n| named_dests.get(&n).copied())
         }
         _ => None,
     }

@@ -3,12 +3,14 @@
 //! This module handles SQLite database operations, including:
 //! - Database path resolution
 //! - Loading recent files for the menu
+//! - Common database helper functions
 
-use crate::error::{ConfigError, IoError, PedaruError};
+use crate::error::{ConfigError, DatabaseError, IoError, PedaruError};
 use crate::types::RecentFile;
 use rusqlite::Connection;
 use std::fs;
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Manager;
 
 /// Get the path to the SQLite database
@@ -33,6 +35,27 @@ pub fn get_db_path(app: &tauri::AppHandle) -> Result<PathBuf, PedaruError> {
     }
 
     Ok(app_config_dir.join("pedaru.db"))
+}
+
+/// Open a database connection
+///
+/// This is a common helper function used by various modules
+/// to open a connection to the SQLite database.
+pub fn open_db(app: &tauri::AppHandle) -> Result<Connection, PedaruError> {
+    let db_path = get_db_path(app)?;
+    Connection::open(&db_path)
+        .map_err(|source| PedaruError::Database(DatabaseError::OpenFailed { source }))
+}
+
+/// Get current Unix timestamp
+///
+/// Returns the current time as seconds since Unix epoch.
+/// Used for created_at, updated_at, and last_opened fields.
+pub fn now_timestamp() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
 }
 
 /// Load recent files from SQLite database
