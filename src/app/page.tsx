@@ -389,6 +389,11 @@ export default function Home() {
   // Note: loadPdfFromPathInternal and loadPdfFromPath now provided by usePdfLoader hook
   // Note: New PDFs are opened in new windows via the Opened event in Rust (like Preview app).
 
+  // Open settings callback
+  const handleOpenSettings = useCallback(() => {
+    setShowSettingsModal(true);
+  }, []);
+
   // Menu event handlers (extracted to hook)
   useMenuHandlers(
     resetAllState,
@@ -399,7 +404,8 @@ export default function Home() {
     handleZoomOut,
     handleZoomReset,
     handleToggleHeader,
-    setViewMode
+    setViewMode,
+    handleOpenSettings
   );
 
   // Application startup logic (standalone mode, CLI file, session restore)
@@ -548,7 +554,6 @@ export default function Home() {
           bookmarkCount={bookmarks.length}
           onCloseAllWindows={closeAllWindows}
           showWindows={showWindows}
-          onOpenSettings={() => setShowSettingsModal(true)}
         />
       )}
 

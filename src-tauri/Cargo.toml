@@ -31,6 +31,7 @@ urlencoding = "2"
 base64 = "0.22"
 anyhow = "1.0.100"
 thiserror = "2.0.17"
+keyring = "3"
 
 # Google Drive integration
 reqwest = { version = "0.12", features = ["json", "stream", "blocking"] }
@@ -39,6 +40,14 @@ sha2 = "0.10"
 rand = "0.8"
 tiny_http = "0.12"
 futures-util = "0.3"
+
+# Linux-specific: use kernel keyring instead of Secret Service
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["linux-native"] }
+
+# macOS-specific: use Keychain
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
 
 [dev-dependencies]
 tempfile = "3"

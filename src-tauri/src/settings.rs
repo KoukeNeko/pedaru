@@ -1,17 +1,19 @@
 //! Application settings storage
 //!
-//! This module handles storing and retrieving app settings from the SQLite database.
+//! This module handles storing and retrieving app settings.
+//! - Sensitive data (API keys) are stored in Stronghold (encrypted)
+//! - Non-sensitive data (model names) are stored in SQLite
 
 use serde::{Deserialize, Serialize};
 
 use crate::db::{now_timestamp, open_db};
 use crate::error::{DatabaseError, PedaruError};
+use crate::secrets;
 
 // ============================================================================
-// Constants - Setting Keys
+// Constants - Setting Keys (for SQLite)
 // ============================================================================
 
-pub const KEY_GEMINI_API_KEY: &str = "gemini_api_key";
 pub const KEY_GEMINI_MODEL: &str = "gemini_model";
 pub const KEY_GEMINI_EXPLANATION_MODEL: &str = "gemini_explanation_model";
 
@@ -44,10 +46,10 @@ impl Default for GeminiSettings {
 }
 
 // ============================================================================
-// Database Operations
+// Database Operations (for non-sensitive settings)
 // ============================================================================
 
-/// Get a setting value by key
+/// Get a setting value by key from SQLite
 pub fn get_setting(app: &tauri::AppHandle, key: &str) -> Result<Option<String>, PedaruError> {
     let conn = open_db(app)?;
 
@@ -65,7 +67,7 @@ pub fn get_setting(app: &tauri::AppHandle, key: &str) -> Result<Option<String>, 
     }
 }
 
-/// Set a setting value
+/// Set a setting value in SQLite
 pub fn set_setting(app: &tauri::AppHandle, key: &str, value: &str) -> Result<(), PedaruError> {
     let conn = open_db(app)?;
     let now = now_timestamp();
@@ -81,8 +83,12 @@ pub fn set_setting(app: &tauri::AppHandle, key: &str, value: &str) -> Result<(),
 }
 
 /// Get all Gemini settings
+/// API key is stored in Stronghold (encrypted), model names in SQLite
 pub fn get_gemini_settings(app: &tauri::AppHandle) -> Result<GeminiSettings, PedaruError> {
-    let api_key = get_setting(app, KEY_GEMINI_API_KEY)?.unwrap_or_default();
+    // Get API key from Stronghold (encrypted)
+    let api_key = secrets::get_secret(app, secrets::keys::GEMINI_API_KEY)?.unwrap_or_default();
+
+    // Get model names from SQLite (non-sensitive)
     let model =
         get_setting(app, KEY_GEMINI_MODEL)?.unwrap_or_else(|| DEFAULT_GEMINI_MODEL.to_string());
     let explanation_model = get_setting(app, KEY_GEMINI_EXPLANATION_MODEL)?
@@ -96,11 +102,19 @@ pub fn get_gemini_settings(app: &tauri::AppHandle) -> Result<GeminiSettings, Ped
 }
 
 /// Save Gemini settings
+/// API key is stored in Stronghold (encrypted), model names in SQLite
 pub fn save_gemini_settings(
     app: &tauri::AppHandle,
     settings: &GeminiSettings,
 ) -> Result<(), PedaruError> {
-    set_setting(app, KEY_GEMINI_API_KEY, &settings.api_key)?;
+    // Store API key in Stronghold (encrypted)
+    if settings.api_key.is_empty() {
+        secrets::delete_secret(app, secrets::keys::GEMINI_API_KEY)?;
+    } else {
+        secrets::store_secret(app, secrets::keys::GEMINI_API_KEY, &settings.api_key)?;
+    }
+
+    // Store model names in SQLite (non-sensitive)
     set_setting(app, KEY_GEMINI_MODEL, &settings.model)?;
     set_setting(
         app,

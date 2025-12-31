@@ -149,5 +149,24 @@ pub fn get_migrations() -> Vec<Migration> {
                 DROP INDEX IF EXISTS idx_sessions_path_hash;",
             kind: MigrationKind::Up,
         },
+        // Migration V7: Remove plaintext sensitive data
+        // All secrets are now stored in Stronghold (encrypted vault)
+        // Users will need to re-enter API keys and re-authenticate with Google
+        Migration {
+            version: 7,
+            description: "remove_plaintext_secrets",
+            sql: "-- Remove Gemini API key from settings (now stored in Stronghold)
+                DELETE FROM settings WHERE key = 'gemini_api_key';
+
+                -- Clear OAuth credentials and tokens from google_auth
+                -- These are now stored in Stronghold
+                UPDATE google_auth SET
+                    client_id = '',
+                    client_secret = '',
+                    access_token = NULL,
+                    refresh_token = NULL,
+                    token_expiry = NULL;",
+            kind: MigrationKind::Up,
+        },
     ]
 }

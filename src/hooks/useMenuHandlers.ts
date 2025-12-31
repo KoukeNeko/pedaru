@@ -23,6 +23,7 @@ import type { ViewMode } from './types';
  * @param handleZoomReset - Function to reset zoom
  * @param handleToggleHeader - Function to toggle header visibility
  * @param setViewMode - Setter for view mode
+ * @param handleOpenSettings - Function to open settings
  */
 export function useMenuHandlers(
   resetAllState: (options?: { resetViewMode?: boolean }) => void,
@@ -33,7 +34,8 @@ export function useMenuHandlers(
   handleZoomOut: () => void,
   handleZoomReset: () => void,
   handleToggleHeader: () => void,
-  setViewMode: Dispatch<SetStateAction<ViewMode>>
+  setViewMode: Dispatch<SetStateAction<ViewMode>>,
+  handleOpenSettings: () => void
 ) {
   // Handle reset all data request from app menu
   const handleResetAllData = useCallback(async () => {
@@ -154,7 +156,7 @@ export function useMenuHandlers(
     [isStandaloneMode, handleResetAllData]
   );
 
-  // Listen for menu events from system menu bar (zoom, view mode, session export/import)
+  // Listen for menu events from system menu bar (zoom, view mode, session export/import, settings)
   useTauriEventListeners(
     [
       { event: 'menu-zoom-in', handler: handleZoomIn },
@@ -164,6 +166,7 @@ export function useMenuHandlers(
       { event: 'menu-toggle-header', handler: handleToggleHeader },
       { event: 'export-session-data-requested', handler: handleExportSession },
       { event: 'import-session-data-requested', handler: handleImportSession },
+      { event: 'menu-open-settings', handler: handleOpenSettings },
     ],
     [
       handleZoomIn,
@@ -173,6 +176,7 @@ export function useMenuHandlers(
       handleToggleHeader,
       handleExportSession,
       handleImportSession,
+      handleOpenSettings,
     ]
   );
 

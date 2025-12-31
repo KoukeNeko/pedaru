@@ -31,6 +31,9 @@ pub enum PedaruError {
 
     #[error("Gemini API error: {0}")]
     Gemini(#[from] GeminiError),
+
+    #[error("Secrets storage error: {0}")]
+    Secrets(String),
 }
 
 /// PDF-specific errors (loading, parsing, metadata extraction)

@@ -17,7 +17,6 @@ import {
   XSquare,
   Bookmark,
   Library,
-  Settings
 } from 'lucide-react';
 import { ViewMode } from './Settings';
 
@@ -55,7 +54,6 @@ interface HeaderProps {
   onSearchPrev: () => void;
   onSearchNext: () => void;
   onCloseAllWindows: () => void;
-  onOpenSettings: () => void;
 }
 
 export default function Header({
@@ -92,7 +90,6 @@ export default function Header({
   onSearchPrev,
   onSearchNext,
   onCloseAllWindows,
-  onOpenSettings,
 }: HeaderProps) {
   const isPdfLoaded = totalPages > 0;
 
@@ -329,18 +326,6 @@ export default function Header({
             <Columns className="w-4 h-4" />
           </button>
         </div>
-
-        <div className="w-px h-6 bg-bg-tertiary mx-2" />
-
-        {/* Settings */}
-        <button
-          onClick={onOpenSettings}
-          className="p-2 rounded-lg bg-bg-tertiary hover:bg-bg-hover text-text-primary transition-colors"
-          title="Settings"
-          aria-label="Settings"
-        >
-          <Settings className="w-5 h-5" />
-        </button>
       </div>
     </header>
   );

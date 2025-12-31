@@ -21,6 +21,7 @@ pub mod google_drive;
 pub mod menu;
 pub mod oauth;
 pub mod pdf;
+pub mod secrets;
 pub mod settings;
 pub mod types;
 
@@ -508,6 +509,9 @@ pub fn run() {
                 }
                 "toggle_header" => {
                     app.emit("menu-toggle-header", ()).ok();
+                }
+                "open_settings" => {
+                    app.emit("menu-open-settings", ()).ok();
                 }
                 _ => {}
             }

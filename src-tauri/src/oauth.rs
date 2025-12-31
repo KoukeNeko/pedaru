@@ -2,10 +2,11 @@
 //!
 //! This module handles the OAuth authorization flow for desktop applications
 //! using the PKCE (Proof Key for Code Exchange) extension.
+//!
+//! All OAuth credentials and tokens are stored in Stronghold (encrypted).
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use rand::Rng;
-use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::Mutex;
@@ -13,8 +14,8 @@ use std::thread;
 use tauri::AppHandle;
 use tiny_http::{Response, Server};
 
-use crate::db::get_db_path;
 use crate::error::{OAuthError, PedaruError};
+use crate::secrets;
 
 /// Google OAuth endpoints
 const GOOGLE_AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
@@ -89,155 +90,94 @@ fn generate_state() -> String {
     URL_SAFE_NO_PAD.encode(&bytes)
 }
 
-/// Save OAuth credentials to database
+/// Save OAuth credentials to Stronghold (encrypted)
 pub fn save_credentials(
     app: &AppHandle,
     credentials: &OAuthCredentials,
 ) -> Result<(), PedaruError> {
-    let db_path = get_db_path(app)?;
-    let conn = Connection::open(&db_path).map_err(|e| {
-        PedaruError::Database(crate::error::DatabaseError::OpenFailed { source: e })
-    })?;
-
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
-
-    conn.execute(
-        "INSERT INTO google_auth (id, client_id, client_secret, created_at, updated_at)
-         VALUES (1, ?1, ?2, ?3, ?3)
-         ON CONFLICT(id) DO UPDATE SET
-           client_id = excluded.client_id,
-           client_secret = excluded.client_secret,
-           updated_at = excluded.updated_at",
-        [
-            &credentials.client_id,
-            &credentials.client_secret,
-            &now.to_string(),
-        ],
-    )
-    .map_err(|e| PedaruError::OAuth(OAuthError::TokenExchangeFailed(e.to_string())))?;
-
+    secrets::store_secret(app, secrets::keys::GOOGLE_CLIENT_ID, &credentials.client_id)?;
+    secrets::store_secret(
+        app,
+        secrets::keys::GOOGLE_CLIENT_SECRET,
+        &credentials.client_secret,
+    )?;
+    eprintln!("[Pedaru] Saved OAuth credentials to Stronghold");
     Ok(())
 }
 
-/// Load OAuth credentials from database
+/// Load OAuth credentials from Stronghold
 pub fn load_credentials(app: &AppHandle) -> Result<Option<OAuthCredentials>, PedaruError> {
-    let db_path = get_db_path(app)?;
-    let conn = Connection::open(&db_path).map_err(|e| {
-        PedaruError::Database(crate::error::DatabaseError::OpenFailed { source: e })
-    })?;
+    let client_id = secrets::get_secret(app, secrets::keys::GOOGLE_CLIENT_ID)?;
+    let client_secret = secrets::get_secret(app, secrets::keys::GOOGLE_CLIENT_SECRET)?;
 
-    let mut stmt = conn
-        .prepare("SELECT client_id, client_secret FROM google_auth WHERE id = 1")
-        .map_err(|e| PedaruError::OAuth(OAuthError::InvalidResponse(e.to_string())))?;
-
-    let result = stmt.query_row([], |row| {
-        Ok(OAuthCredentials {
-            client_id: row.get(0)?,
-            client_secret: row.get(1)?,
-        })
-    });
-
-    match result {
-        Ok(creds) => Ok(Some(creds)),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-        Err(e) => Err(PedaruError::OAuth(OAuthError::InvalidResponse(
-            e.to_string(),
-        ))),
+    match (client_id, client_secret) {
+        (Some(id), Some(secret)) => Ok(Some(OAuthCredentials {
+            client_id: id,
+            client_secret: secret,
+        })),
+        _ => Ok(None),
     }
 }
 
-/// Load complete auth state from database
+/// Load complete auth state from Stronghold
 pub fn load_auth_state(app: &AppHandle) -> Result<Option<AuthState>, PedaruError> {
-    let db_path = get_db_path(app)?;
-    let conn = Connection::open(&db_path).map_err(|e| {
-        PedaruError::Database(crate::error::DatabaseError::OpenFailed { source: e })
-    })?;
+    let client_id = secrets::get_secret(app, secrets::keys::GOOGLE_CLIENT_ID)?;
+    let client_secret = secrets::get_secret(app, secrets::keys::GOOGLE_CLIENT_SECRET)?;
 
-    let mut stmt = conn
-        .prepare(
-            "SELECT client_id, client_secret, access_token, refresh_token, token_expiry
-             FROM google_auth WHERE id = 1",
-        )
-        .map_err(|e| PedaruError::OAuth(OAuthError::InvalidResponse(e.to_string())))?;
+    match (client_id, client_secret) {
+        (Some(id), Some(secret)) => {
+            let access_token = secrets::get_secret(app, secrets::keys::GOOGLE_ACCESS_TOKEN)?;
+            let refresh_token = secrets::get_secret(app, secrets::keys::GOOGLE_REFRESH_TOKEN)?;
+            let token_expiry = secrets::get_secret(app, secrets::keys::GOOGLE_TOKEN_EXPIRY)?
+                .and_then(|s| s.parse::<i64>().ok());
 
-    let result = stmt.query_row([], |row| {
-        Ok(AuthState {
-            client_id: row.get(0)?,
-            client_secret: row.get(1)?,
-            access_token: row.get(2)?,
-            refresh_token: row.get(3)?,
-            token_expiry: row.get(4)?,
-        })
-    });
-
-    match result {
-        Ok(state) => Ok(Some(state)),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-        Err(e) => Err(PedaruError::OAuth(OAuthError::InvalidResponse(
-            e.to_string(),
-        ))),
+            Ok(Some(AuthState {
+                client_id: id,
+                client_secret: secret,
+                access_token,
+                refresh_token,
+                token_expiry,
+            }))
+        }
+        _ => Ok(None),
     }
 }
 
-/// Save tokens to database
+/// Save tokens to Stronghold (encrypted)
 pub fn save_tokens(
     app: &AppHandle,
     access_token: &str,
     refresh_token: Option<&str>,
     expires_in: Option<i64>,
 ) -> Result<(), PedaruError> {
-    let db_path = get_db_path(app)?;
-    let conn = Connection::open(&db_path).map_err(|e| {
-        PedaruError::Database(crate::error::DatabaseError::OpenFailed { source: e })
-    })?;
+    // Store access token
+    secrets::store_secret(app, secrets::keys::GOOGLE_ACCESS_TOKEN, access_token)?;
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
+    // Store refresh token if provided (keep existing if not)
+    if let Some(token) = refresh_token {
+        secrets::store_secret(app, secrets::keys::GOOGLE_REFRESH_TOKEN, token)?;
+    }
 
-    let token_expiry = expires_in.map(|e| now + e);
+    // Calculate and store token expiry
+    if let Some(expires) = expires_in {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        let expiry = now + expires;
+        secrets::store_secret(app, secrets::keys::GOOGLE_TOKEN_EXPIRY, &expiry.to_string())?;
+    }
 
-    conn.execute(
-        "UPDATE google_auth SET
-           access_token = ?1,
-           refresh_token = COALESCE(?2, refresh_token),
-           token_expiry = ?3,
-           updated_at = ?4
-         WHERE id = 1",
-        rusqlite::params![access_token, refresh_token, token_expiry, now],
-    )
-    .map_err(|e| PedaruError::OAuth(OAuthError::TokenExchangeFailed(e.to_string())))?;
-
+    eprintln!("[Pedaru] Saved OAuth tokens to Stronghold");
     Ok(())
 }
 
-/// Clear tokens from database (logout)
+/// Clear tokens from Stronghold (logout)
 pub fn clear_tokens(app: &AppHandle) -> Result<(), PedaruError> {
-    let db_path = get_db_path(app)?;
-    let conn = Connection::open(&db_path).map_err(|e| {
-        PedaruError::Database(crate::error::DatabaseError::OpenFailed { source: e })
-    })?;
-
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
-
-    conn.execute(
-        "UPDATE google_auth SET
-           access_token = NULL,
-           refresh_token = NULL,
-           token_expiry = NULL,
-           updated_at = ?1
-         WHERE id = 1",
-        [now],
-    )
-    .map_err(|e| PedaruError::OAuth(OAuthError::TokenExchangeFailed(e.to_string())))?;
-
+    secrets::delete_secret(app, secrets::keys::GOOGLE_ACCESS_TOKEN)?;
+    secrets::delete_secret(app, secrets::keys::GOOGLE_REFRESH_TOKEN)?;
+    secrets::delete_secret(app, secrets::keys::GOOGLE_TOKEN_EXPIRY)?;
+    eprintln!("[Pedaru] Cleared OAuth tokens from Stronghold");
     Ok(())
 }
 

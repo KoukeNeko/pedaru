@@ -43,6 +43,8 @@ fn build_app_menu_internal(app: &tauri::AppHandle) -> anyhow::Result<Menu<tauri:
         None::<&str>,
     )?;
 
+    let settings_item = MenuItem::with_id(app, "open_settings", "Settings...", true, None::<&str>)?;
+
     // File menu items
     let open_file_item =
         MenuItem::with_id(app, "open_file", "Open...", true, Some(&shortcut("O")))?;
@@ -111,6 +113,8 @@ fn build_app_menu_internal(app: &tauri::AppHandle) -> anyhow::Result<Menu<tauri:
         true,
         &[
             &PredefinedMenuItem::about(app, Some("About Pedaru"), None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &settings_item,
             &PredefinedMenuItem::separator(app)?,
             &reset_item,
             &import_item,
