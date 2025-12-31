@@ -76,9 +76,9 @@ When editing multi-window features, ensure events are emitted and handled proper
 Session state is stored in SQLite database with per-PDF granularity:
 
 **Database Location:**
-- macOS: `~/Library/Application Support/com.togatoga.pedaru/pedaru.db`
-- Linux: `~/.config/com.togatoga.pedaru/pedaru.db`
-- Windows: `C:\Users\<username>\AppData\Roaming\com.togatoga.pedaru\pedaru.db`
+- macOS: `~/Library/Application Support/pedaru/pedaru.db`
+- Linux: `~/.config/pedaru/pedaru.db`
+- Windows: `C:\Users\<username>\AppData\Roaming\pedaru\pedaru.db`
 
 **Database Schema:**
 - `sessions` table - Per-PDF session data:

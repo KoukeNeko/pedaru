@@ -16,9 +16,9 @@ use tauri::Manager;
 /// Get the path to the SQLite database
 ///
 /// Uses app_config_dir to match tauri-plugin-sql's database location:
-/// - macOS: `~/Library/Application Support/com.togatoga.pedaru/pedaru.db`
-/// - Linux: `~/.config/com.togatoga.pedaru/pedaru.db`
-/// - Windows: `C:\Users\<username>\AppData\Roaming\com.togatoga.pedaru\pedaru.db`
+/// - macOS: `~/Library/Application Support/pedaru/pedaru.db`
+/// - Linux: `~/.config/pedaru/pedaru.db`
+/// - Windows: `C:\Users\<username>\AppData\Roaming\pedaru\pedaru.db`
 pub fn get_db_path(app: &tauri::AppHandle) -> Result<PathBuf, PedaruError> {
     // Use app_config_dir to match tauri-plugin-sql's database location
     let app_config_dir = app
