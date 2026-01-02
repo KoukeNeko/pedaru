@@ -76,13 +76,22 @@ export async function generateThumbnailFromPath(filePath: string): Promise<strin
 }
 
 /**
+ * Item for thumbnail generation - either cloud (with driveFileId) or local (with itemId)
+ */
+export interface ThumbnailItem {
+  localPath: string;
+  driveFileId?: string;
+  itemId?: number;
+}
+
+/**
  * Generate thumbnails for multiple items in the background using requestIdleCallback
- * @param items - Array of items with localPath and driveFileId
+ * @param items - Array of items with localPath and either driveFileId (cloud) or itemId (local)
  * @param onThumbnailGenerated - Callback when a thumbnail is generated
  */
 export async function generateThumbnailsInBackground(
-  items: Array<{ driveFileId: string; localPath: string }>,
-  onThumbnailGenerated: (driveFileId: string, thumbnailData: string) => Promise<void>
+  items: ThumbnailItem[],
+  onThumbnailGenerated: (item: ThumbnailItem, thumbnailData: string) => Promise<void>
 ): Promise<void> {
   // Process one item at a time with idle callback to not block UI
   const processNext = (index: number): Promise<void> => {
@@ -95,7 +104,7 @@ export async function generateThumbnailsInBackground(
       const scheduleNext = () => {
         const item = items[index];
         generateThumbnailFromPath(item.localPath)
-          .then((thumbnailData) => onThumbnailGenerated(item.driveFileId, thumbnailData))
+          .then((thumbnailData) => onThumbnailGenerated(item, thumbnailData))
           .catch((err) => console.error(`Failed to generate thumbnail for ${item.localPath}:`, err))
           .finally(() => {
             // Process next item after a small delay

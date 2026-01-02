@@ -36,6 +36,8 @@ export default function BookshelfSidebar({ onOpenPdf, currentFilePath }: Bookshe
     isLoading: authLoading,
     error: authError,
     syncedFolders,
+    hasCheckedAuth,
+    checkAuthStatus,
     saveCredentials,
     login,
     logout,
@@ -55,6 +57,7 @@ export default function BookshelfSidebar({ onOpenPdf, currentFilePath }: Bookshe
     deleteLocalCopy,
     resetDownloadStatus,
     updateThumbnail,
+    updateLocalThumbnail,
     getItemsNeedingThumbnails,
   } = useBookshelf();
 
@@ -79,22 +82,24 @@ export default function BookshelfSidebar({ onOpenPdf, currentFilePath }: Bookshe
   const thumbnailQueueRef = useRef<Set<string>>(new Set());
   const isGeneratingRef = useRef(false);
 
-  // Generate thumbnails for newly downloaded items (with deduplication)
+  // Generate thumbnails for newly downloaded/imported items (with deduplication)
   useEffect(() => {
     // Prevent concurrent thumbnail generation
     if (isGeneratingRef.current) return;
 
-    const itemsNeedingThumbnails = getItemsNeedingThumbnails().filter(
-      (item) => item.driveFileId && !thumbnailQueueRef.current.has(item.driveFileId)
-    );
+    // Get items needing thumbnails and filter those not already queued
+    const itemsNeedingThumbnails = getItemsNeedingThumbnails().filter((item) => {
+      // Use driveFileId for cloud items, or `local-${id}` for local items
+      const queueKey = item.driveFileId || `local-${item.id}`;
+      return !thumbnailQueueRef.current.has(queueKey);
+    });
 
     if (itemsNeedingThumbnails.length === 0) return;
 
-    // Mark items as queued
+    // Add items to queue
     itemsNeedingThumbnails.forEach((item) => {
-      if (item.driveFileId) {
-        thumbnailQueueRef.current.add(item.driveFileId);
-      }
+      const queueKey = item.driveFileId || `local-${item.id}`;
+      thumbnailQueueRef.current.add(queueKey);
     });
 
     isGeneratingRef.current = true;
@@ -104,18 +109,25 @@ export default function BookshelfSidebar({ onOpenPdf, currentFilePath }: Bookshe
       try {
         await generateThumbnailsInBackground(
           itemsNeedingThumbnails.map((item) => ({
-            driveFileId: item.driveFileId!,
+            driveFileId: item.driveFileId || undefined,
+            itemId: item.driveFileId ? undefined : item.id,
             localPath: item.localPath!,
           })),
-          async (driveFileId, thumbnailData) => {
-            await updateThumbnail(driveFileId, thumbnailData);
+          async (thumbnailItem, thumbnailData) => {
+            if (thumbnailItem.driveFileId) {
+              // Cloud item
+              await updateThumbnail(thumbnailItem.driveFileId, thumbnailData);
+            } else if (thumbnailItem.itemId !== undefined) {
+              // Local item
+              await updateLocalThumbnail(thumbnailItem.itemId, thumbnailData);
+            }
           }
         );
       } finally {
         isGeneratingRef.current = false;
       }
     })();
-  }, [getItemsNeedingThumbnails, updateThumbnail]);
+  }, [getItemsNeedingThumbnails, updateThumbnail, updateLocalThumbnail]);
 
   // Browse folders
   const browseFolderContents = useCallback(async (folderId: string | null) => {
@@ -178,8 +190,12 @@ export default function BookshelfSidebar({ onOpenPdf, currentFilePath }: Bookshe
   }, [onOpenPdf, resetDownloadStatus, currentFilePath]);
 
   const handleDownload = useCallback(async (item: BookshelfItemType) => {
+    // Check auth status first if it's a cloud item (triggers Keychain access)
+    if (!hasCheckedAuth && item.driveFileId) {
+      await checkAuthStatus();
+    }
     await downloadItem(item);
-  }, [downloadItem]);
+  }, [hasCheckedAuth, checkAuthStatus, downloadItem]);
 
   const handleDelete = useCallback(async (item: BookshelfItemType) => {
     await deleteLocalCopy(item.driveFileId || '');
@@ -196,6 +212,15 @@ export default function BookshelfSidebar({ onOpenPdf, currentFilePath }: Bookshe
       setClientSecret('');
     }
   }, [clientId, clientSecret, saveCredentials]);
+
+  // Handle sync with auth check (triggers Keychain access only when syncing)
+  const handleSync = useCallback(async () => {
+    if (!hasCheckedAuth) {
+      await checkAuthStatus();
+    }
+    await sync();
+    setShowSettings(false);
+  }, [hasCheckedAuth, checkAuthStatus, sync]);
 
   // Get downloadable items count (pending or error status)
   const downloadableItems = items.filter(item =>
@@ -487,10 +512,7 @@ export default function BookshelfSidebar({ onOpenPdf, currentFilePath }: Bookshe
                   </ul>
                   {/* Sync button in settings */}
                   <button
-                    onClick={() => {
-                      sync();
-                      setShowSettings(false);
-                    }}
+                    onClick={handleSync}
                     disabled={isSyncing}
                     className="w-full mt-3 px-3 py-2 bg-accent text-white rounded text-sm font-medium hover:bg-accent/80 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                   >

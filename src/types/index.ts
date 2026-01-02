@@ -178,11 +178,48 @@ export type DownloadStatus = 'pending' | 'downloading' | 'completed' | 'error';
 
 /**
  * Source type for bookshelf items
+ * @deprecated Use CloudItem or LocalItem instead
  */
 export type SourceType = 'google_drive' | 'local';
 
 /**
+ * Cloud bookshelf item (from Google Drive)
+ */
+export interface CloudItem {
+  id: number;
+  driveFileId: string;
+  driveFolderId: string;
+  fileName: string;
+  fileSize?: number;
+  thumbnailData?: string;
+  localPath?: string;
+  downloadStatus: DownloadStatus;
+  downloadProgress: number;
+  pdfTitle?: string;
+  pdfAuthor?: string;
+  isFavorite: boolean;
+  lastOpened?: number;
+}
+
+/**
+ * Local bookshelf item (imported from filesystem)
+ */
+export interface LocalItem {
+  id: number;
+  filePath: string;
+  originalPath: string;
+  fileName: string;
+  fileSize?: number;
+  thumbnailData?: string;
+  pdfTitle?: string;
+  pdfAuthor?: string;
+  isFavorite: boolean;
+  lastOpened?: number;
+}
+
+/**
  * A bookshelf item (PDF from Google Drive or local file)
+ * @deprecated Use CloudItem or LocalItem instead
  */
 export interface BookshelfItem {
   id: number;

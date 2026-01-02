@@ -212,5 +212,87 @@ pub fn get_migrations() -> Vec<Migration> {
                   DELETE FROM bookshelf WHERE source_type = 'local' AND (local_path IS NULL OR local_path = '');",
             kind: MigrationKind::Up,
         },
+        // Migration V12: Split bookshelf table into cloud and local tables
+        // This provides proper separation of concerns and removes unused columns
+        Migration {
+            version: 12,
+            description: "split_bookshelf_into_cloud_and_local",
+            sql: "-- Create bookshelf_cloud table for Google Drive files
+                  CREATE TABLE bookshelf_cloud (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      drive_file_id TEXT NOT NULL UNIQUE,
+                      drive_folder_id TEXT NOT NULL,
+                      file_name TEXT NOT NULL,
+                      file_size INTEGER,
+                      drive_modified_time TEXT,
+                      thumbnail_data TEXT,
+                      local_path TEXT,
+                      download_status TEXT NOT NULL DEFAULT 'pending',
+                      download_progress REAL DEFAULT 0,
+                      pdf_title TEXT,
+                      pdf_author TEXT,
+                      is_favorite INTEGER NOT NULL DEFAULT 0,
+                      last_opened INTEGER,
+                      created_at INTEGER NOT NULL,
+                      updated_at INTEGER NOT NULL
+                  );
+
+                  -- Create bookshelf_local table for locally imported files
+                  CREATE TABLE bookshelf_local (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      file_path TEXT NOT NULL UNIQUE,
+                      original_path TEXT NOT NULL,
+                      file_name TEXT NOT NULL,
+                      file_size INTEGER,
+                      thumbnail_data TEXT,
+                      pdf_title TEXT,
+                      pdf_author TEXT,
+                      is_favorite INTEGER NOT NULL DEFAULT 0,
+                      last_opened INTEGER,
+                      imported_at INTEGER NOT NULL,
+                      updated_at INTEGER NOT NULL
+                  );
+
+                  -- Migrate Google Drive files
+                  INSERT INTO bookshelf_cloud (
+                      id, drive_file_id, drive_folder_id, file_name, file_size,
+                      drive_modified_time, thumbnail_data, local_path, download_status,
+                      download_progress, pdf_title, pdf_author, is_favorite, last_opened,
+                      created_at, updated_at
+                  )
+                  SELECT id, drive_file_id, drive_folder_id, file_name, file_size,
+                         drive_modified_time, thumbnail_data, local_path, download_status,
+                         download_progress, pdf_title, pdf_author, is_favorite, last_opened,
+                         created_at, updated_at
+                  FROM bookshelf WHERE source_type = 'google_drive' OR source_type IS NULL;
+
+                  -- Migrate local files
+                  INSERT INTO bookshelf_local (
+                      id, file_path, original_path, file_name, file_size,
+                      thumbnail_data, pdf_title, pdf_author, is_favorite, last_opened,
+                      imported_at, updated_at
+                  )
+                  SELECT id, local_path, COALESCE(original_path, local_path), file_name, file_size,
+                         thumbnail_data, pdf_title, pdf_author, is_favorite, last_opened,
+                         created_at, updated_at
+                  FROM bookshelf WHERE source_type = 'local';
+
+                  -- Drop the old table
+                  DROP TABLE bookshelf;
+
+                  -- Create indexes for cloud table
+                  CREATE INDEX idx_cloud_drive_file_id ON bookshelf_cloud(drive_file_id);
+                  CREATE INDEX idx_cloud_folder_id ON bookshelf_cloud(drive_folder_id);
+                  CREATE INDEX idx_cloud_download_status ON bookshelf_cloud(download_status);
+                  CREATE INDEX idx_cloud_last_opened ON bookshelf_cloud(last_opened DESC);
+                  CREATE INDEX idx_cloud_favorite ON bookshelf_cloud(is_favorite);
+
+                  -- Create indexes for local table
+                  CREATE INDEX idx_local_file_path ON bookshelf_local(file_path);
+                  CREATE INDEX idx_local_original_path ON bookshelf_local(original_path);
+                  CREATE INDEX idx_local_last_opened ON bookshelf_local(last_opened DESC);
+                  CREATE INDEX idx_local_favorite ON bookshelf_local(is_favorite);",
+            kind: MigrationKind::Up,
+        },
     ]
 }

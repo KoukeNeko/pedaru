@@ -1,12 +1,16 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
 import type { AuthStatus, DriveFolder, StoredFolder } from '@/types';
 
 /**
  * Hook for managing Google OAuth authentication and Drive folder configuration
+ *
+ * Note: Auth status is NOT checked automatically on mount to avoid Keychain prompts
+ * for users who only use local files. Call `checkAuthStatus()` explicitly when
+ * the user wants to use Google Drive features.
  */
 export function useGoogleAuth() {
   const [authStatus, setAuthStatus] = useState<AuthStatus>({
@@ -16,46 +20,45 @@ export function useGoogleAuth() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [syncedFolders, setSyncedFolders] = useState<StoredFolder[]>([]);
-  const [isInitialized, setIsInitialized] = useState(false);
+  // Track if auth has been checked at least once
+  const [hasCheckedAuth, setHasCheckedAuth] = useState(false);
+  // Track if folders have been loaded
+  const foldersLoadedRef = useRef(false);
 
-  // Check authentication status on mount
+  /**
+   * Load synced folders from database (does NOT access Keychain)
+   */
+  const loadSyncedFolders = useCallback(async () => {
+    try {
+      const folders = await invoke<StoredFolder[]>('get_drive_folders');
+      setSyncedFolders(folders);
+    } catch (err) {
+      console.error('Failed to load synced folders:', err);
+    }
+  }, []);
+
+  // Load synced folders on mount (this does NOT access Keychain)
   useEffect(() => {
-    if (isInitialized) return;
-    setIsInitialized(true);
-
-    const doInit = async () => {
-      try {
-        setIsLoading(true);
-        const [status, folders] = await Promise.all([
-          invoke<AuthStatus>('get_google_auth_status'),
-          invoke<StoredFolder[]>('get_drive_folders'),
-        ]);
-        setAuthStatus(status);
-        setSyncedFolders(folders);
-        setError(null);
-      } catch (err) {
-        console.error('Failed to initialize auth:', err);
-        // Don't set error here - auth might just not be configured
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    doInit();
-  }, [isInitialized]);
+    if (foldersLoadedRef.current) return;
+    foldersLoadedRef.current = true;
+    loadSyncedFolders();
+  }, [loadSyncedFolders]);
 
   /**
    * Check current authentication status
+   * This will trigger Keychain access - only call when user wants to use Google Drive
    */
   const checkAuthStatus = useCallback(async () => {
     try {
       setIsLoading(true);
       const status = await invoke<AuthStatus>('get_google_auth_status');
       setAuthStatus(status);
+      setHasCheckedAuth(true);
       setError(null);
     } catch (err) {
       console.error('Failed to check auth status:', err);
       setError(String(err));
+      setHasCheckedAuth(true);
     } finally {
       setIsLoading(false);
     }
@@ -106,6 +109,7 @@ export function useGoogleAuth() {
           if (status.authenticated) {
             clearInterval(pollInterval);
             setAuthStatus(status);
+            setHasCheckedAuth(true);
             setIsLoading(false);
           }
         } catch {
@@ -140,18 +144,6 @@ export function useGoogleAuth() {
       setError(String(err));
     } finally {
       setIsLoading(false);
-    }
-  }, []);
-
-  /**
-   * Load synced folders from database
-   */
-  const loadSyncedFolders = useCallback(async () => {
-    try {
-      const folders = await invoke<StoredFolder[]>('get_drive_folders');
-      setSyncedFolders(folders);
-    } catch (err) {
-      console.error('Failed to load synced folders:', err);
     }
   }, []);
 
@@ -205,6 +197,7 @@ export function useGoogleAuth() {
     isLoading,
     error,
     syncedFolders,
+    hasCheckedAuth,
 
     // Auth actions
     checkAuthStatus,

@@ -285,10 +285,12 @@ export function useBookshelf() {
 
   /**
    * Toggle favorite status for a bookshelf item
+   * @param itemId - The item ID
+   * @param isCloud - Whether the item is a cloud item (Google Drive) or local item
    */
-  const toggleFavorite = useCallback(async (itemId: number): Promise<boolean> => {
+  const toggleFavorite = useCallback(async (itemId: number, isCloud: boolean): Promise<boolean> => {
     try {
-      const newStatus = await invoke<boolean>('toggle_bookshelf_favorite', { itemId });
+      const newStatus = await invoke<boolean>('toggle_bookshelf_favorite', { itemId, isCloud });
 
       // Update local state
       setItems((prevItems) =>
@@ -308,7 +310,7 @@ export function useBookshelf() {
   }, []);
 
   /**
-   * Update thumbnail for a bookshelf item
+   * Update thumbnail for a cloud bookshelf item
    */
   const updateThumbnail = useCallback(async (driveFileId: string, thumbnailData: string): Promise<boolean> => {
     try {
@@ -326,6 +328,29 @@ export function useBookshelf() {
       return true;
     } catch (err) {
       console.error('Failed to update thumbnail:', err);
+      return false;
+    }
+  }, []);
+
+  /**
+   * Update thumbnail for a local bookshelf item
+   */
+  const updateLocalThumbnail = useCallback(async (itemId: number, thumbnailData: string): Promise<boolean> => {
+    try {
+      await invoke('update_local_thumbnail', { itemId, thumbnailData });
+
+      // Update local state
+      setItems((prevItems) =>
+        prevItems.map((item) =>
+          item.id === itemId
+            ? { ...item, thumbnailData }
+            : item
+        )
+      );
+
+      return true;
+    } catch (err) {
+      console.error('Failed to update local thumbnail:', err);
       return false;
     }
   }, []);
@@ -392,6 +417,7 @@ export function useBookshelf() {
     deleteLocalCopy,
     resetDownloadStatus,
     updateThumbnail,
+    updateLocalThumbnail,
     updateLastOpened,
     importLocalFiles,
     importLocalDirectory,

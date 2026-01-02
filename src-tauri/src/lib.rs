@@ -331,7 +331,7 @@ fn reset_download_status(app: tauri::AppHandle, drive_file_id: String) -> Result
     bookshelf::reset_download_status(&app, &drive_file_id).map_err(|e| e.into_tauri_error())
 }
 
-/// Update bookshelf item thumbnail
+/// Update bookshelf item thumbnail (cloud items)
 #[tauri::command(rename_all = "camelCase")]
 fn update_bookshelf_thumbnail(
     app: tauri::AppHandle,
@@ -339,6 +339,17 @@ fn update_bookshelf_thumbnail(
     thumbnail_data: String,
 ) -> Result<(), String> {
     bookshelf::update_thumbnail(&app, &drive_file_id, &thumbnail_data)
+        .map_err(|e| e.into_tauri_error())
+}
+
+/// Update bookshelf item thumbnail (local items)
+#[tauri::command(rename_all = "camelCase")]
+fn update_local_thumbnail(
+    app: tauri::AppHandle,
+    item_id: i64,
+    thumbnail_data: String,
+) -> Result<(), String> {
+    bookshelf::update_local_thumbnail(&app, item_id, &thumbnail_data)
         .map_err(|e| e.into_tauri_error())
 }
 
@@ -363,13 +374,7 @@ fn import_local_files(
             Ok(item) => {
                 imported_count += 1;
                 // Extract and save PDF metadata
-                if let Some(local_path) = &item.local_path {
-                    let _ = bookshelf::extract_and_save_pdf_metadata(
-                        &app,
-                        local_path,
-                        item.drive_file_id.as_deref().unwrap_or(""),
-                    );
-                }
+                let _ = bookshelf::extract_and_save_local_metadata(&app, &item.file_path, item.id);
             }
             Err(e) => {
                 let error_str = format!("{:?}", e);
@@ -402,18 +407,9 @@ fn import_local_directory(
     // Extract metadata for newly imported files
     if result.imported_count > 0 {
         // Get all local items and update their metadata
-        if let Ok(items) = bookshelf::get_items(&app) {
-            for item in items
-                .iter()
-                .filter(|i| i.source_type == "local" && i.pdf_title.is_none())
-            {
-                if let Some(local_path) = &item.local_path {
-                    let _ = bookshelf::extract_and_save_pdf_metadata(
-                        &app,
-                        local_path,
-                        item.drive_file_id.as_deref().unwrap_or(""),
-                    );
-                }
+        if let Ok(items) = bookshelf::get_local_items(&app) {
+            for item in items.iter().filter(|i| i.pdf_title.is_none()) {
+                let _ = bookshelf::extract_and_save_local_metadata(&app, &item.file_path, item.id);
             }
         }
     }
@@ -429,8 +425,12 @@ fn delete_bookshelf_item(app: tauri::AppHandle, item_id: i64) -> Result<(), Stri
 
 /// Toggle favorite status for a bookshelf item
 #[tauri::command(rename_all = "camelCase")]
-fn toggle_bookshelf_favorite(app: tauri::AppHandle, item_id: i64) -> Result<bool, String> {
-    bookshelf::toggle_favorite(&app, item_id).map_err(|e| e.into_tauri_error())
+fn toggle_bookshelf_favorite(
+    app: tauri::AppHandle,
+    item_id: i64,
+    is_cloud: bool,
+) -> Result<bool, String> {
+    bookshelf::toggle_favorite(&app, item_id, is_cloud).map_err(|e| e.into_tauri_error())
 }
 
 /// Update last_opened timestamp when a PDF is opened from bookshelf
@@ -687,6 +687,7 @@ pub fn run() {
             delete_local_copy,
             reset_download_status,
             update_bookshelf_thumbnail,
+            update_local_thumbnail,
             cancel_bookshelf_download,
             // Local import commands
             import_local_files,
@@ -704,12 +705,6 @@ pub fn run() {
             // Build and set the initial menu
             let menu = build_app_menu(app.handle()).map_err(|e| e.into_tauri_error())?;
             app.set_menu(menu)?;
-
-            // Ensure bookshelf schema is up to date
-            // This handles cases where tauri-plugin-sql migrations haven't run yet
-            if let Err(e) = bookshelf::ensure_schema(app.handle()) {
-                eprintln!("[Pedaru] Failed to ensure bookshelf schema: {}", e);
-            }
 
             // Reset any stale "downloading" statuses from previous sessions
             if let Err(e) = bookshelf::reset_stale_downloads(app.handle()) {
