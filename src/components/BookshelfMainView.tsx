@@ -88,7 +88,7 @@ export default function BookshelfMainView({ onOpenPdf, currentFilePath, onClose 
   const [currentDownloadIndex, setCurrentDownloadIndex] = useState(0);
   const [totalDownloads, setTotalDownloads] = useState(0);
   const [filterMode, setFilterMode] = useState<'all' | 'pending' | 'downloaded'>('all');
-  const [sourceFilter, setSourceFilter] = useState<'all' | 'local' | 'cloud'>('all');
+  const [sourceFilter, setSourceFilter] = useState<'local' | 'cloud' | null>(null);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
 
   // Credentials input (for first-time setup)
@@ -303,6 +303,7 @@ export default function BookshelfMainView({ onOpenPdf, currentFilePath, onClose 
     } else if (sourceFilter === 'cloud') {
       filtered = filtered.filter(item => item.sourceType === 'google_drive');
     }
+    // When sourceFilter is null, show all items
 
     // Download status filter
     if (filterMode === 'pending') {
@@ -916,28 +917,20 @@ export default function BookshelfMainView({ onOpenPdf, currentFilePath, onClose 
                 </button>
               </div>
               {/* Source type filter */}
-              <div className="flex border border-bg-tertiary rounded-lg overflow-hidden">
+              <div className="flex gap-2">
                 <button
-                  onClick={() => setSourceFilter('all')}
-                  className={`px-4 py-2 text-sm font-medium transition-colors ${
-                    sourceFilter === 'all' ? 'bg-accent text-white' : 'text-text-tertiary hover:text-text-secondary'
-                  }`}
-                >
-                  All
-                </button>
-                <button
-                  onClick={() => setSourceFilter('local')}
-                  className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-1 ${
-                    sourceFilter === 'local' ? 'bg-accent text-white' : 'text-text-tertiary hover:text-text-secondary'
+                  onClick={() => setSourceFilter(sourceFilter === 'local' ? null : 'local')}
+                  className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-1 border rounded-lg ${
+                    sourceFilter === 'local' ? 'bg-accent text-white border-accent' : 'text-text-tertiary hover:text-text-secondary border-bg-tertiary'
                   }`}
                 >
                   <HardDrive className="w-3.5 h-3.5" />
                   Local ({localCount})
                 </button>
                 <button
-                  onClick={() => setSourceFilter('cloud')}
-                  className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-1 ${
-                    sourceFilter === 'cloud' ? 'bg-accent text-white' : 'text-text-tertiary hover:text-text-secondary'
+                  onClick={() => setSourceFilter(sourceFilter === 'cloud' ? null : 'cloud')}
+                  className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-1 border rounded-lg ${
+                    sourceFilter === 'cloud' ? 'bg-accent text-white border-accent' : 'text-text-tertiary hover:text-text-secondary border-bg-tertiary'
                   }`}
                 >
                   <Cloud className="w-3.5 h-3.5" />
