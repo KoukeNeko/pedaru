@@ -243,10 +243,14 @@ async fn sync_bookshelf(app: tauri::AppHandle) -> Result<bookshelf::SyncResult, 
             .map_err(|e| e.into_tauri_error())?;
     }
 
+    // Remove items from folders that are no longer synced (but keep downloaded files)
+    let removed_files =
+        bookshelf::remove_items_from_inactive_folders(&app).map_err(|e| e.into_tauri_error())?;
+
     Ok(bookshelf::SyncResult {
         new_files,
         updated_files,
-        removed_files: 0,
+        removed_files,
     })
 }
 

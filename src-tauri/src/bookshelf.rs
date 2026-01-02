@@ -527,6 +527,66 @@ pub fn verify_cloud_files(app: &AppHandle) -> Result<i32, PedaruError> {
     Ok(reset_count)
 }
 
+/// Remove cloud items from inactive (removed) folders
+/// Only removes items that are not downloaded (pending status)
+/// Returns the number of items removed
+pub fn remove_items_from_inactive_folders(app: &AppHandle) -> Result<i32, PedaruError> {
+    let conn = open_db(app)?;
+
+    // Get list of active folder IDs
+    let mut stmt = conn
+        .prepare("SELECT folder_id FROM drive_folders WHERE is_active = 1")
+        .db_err()?;
+    let active_folder_ids: Vec<String> = stmt
+        .query_map([], |row| row.get(0))
+        .db_err()?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    if active_folder_ids.is_empty() {
+        // No active folders - remove all non-downloaded cloud items
+        let count = conn
+            .execute(
+                "DELETE FROM bookshelf_cloud WHERE download_status != 'completed'",
+                [],
+            )
+            .db_err()?;
+        eprintln!(
+            "[Pedaru] Removed {} cloud items (no active folders)",
+            count
+        );
+        return Ok(count as i32);
+    }
+
+    // Build placeholders for IN clause
+    let placeholders: Vec<String> = (0..active_folder_ids.len())
+        .map(|i| format!("?{}", i + 1))
+        .collect();
+    let in_clause = placeholders.join(", ");
+
+    // Delete items from inactive folders that are not downloaded
+    let query = format!(
+        "DELETE FROM bookshelf_cloud WHERE drive_folder_id NOT IN ({}) AND download_status != 'completed'",
+        in_clause
+    );
+
+    let params: Vec<&dyn rusqlite::ToSql> = active_folder_ids
+        .iter()
+        .map(|s| s as &dyn rusqlite::ToSql)
+        .collect();
+
+    let count = conn.execute(&query, params.as_slice()).db_err()?;
+
+    if count > 0 {
+        eprintln!(
+            "[Pedaru] Removed {} cloud items from inactive folders",
+            count
+        );
+    }
+
+    Ok(count as i32)
+}
+
 /// Toggle favorite status for cloud item
 pub fn toggle_cloud_favorite(app: &AppHandle, item_id: i64) -> Result<bool, PedaruError> {
     let conn = open_db(app)?;
