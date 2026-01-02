@@ -1208,16 +1208,14 @@ export default function BookshelfMainView({ onOpenPdf, currentFilePath, onClose 
               <Grid className="w-5 h-5 text-text-secondary" />
             )}
           </button>
-          {authStatus.authenticated && (
-            <button
-              onClick={sync}
-              disabled={isSyncing}
-              className="p-2 hover:bg-bg-tertiary rounded transition-colors"
-              title="Sync with Google Drive"
-            >
-              <RefreshCw className={`w-5 h-5 text-text-secondary ${isSyncing ? 'animate-spin' : ''}`} />
-            </button>
-          )}
+          <button
+            onClick={handleSync}
+            disabled={isSyncing}
+            className="p-2 hover:bg-bg-tertiary rounded transition-colors"
+            title="Sync with Google Drive"
+          >
+            <RefreshCw className={`w-5 h-5 text-text-secondary ${isSyncing ? 'animate-spin' : ''}`} />
+          </button>
           <button
             onClick={() => setShowSettings(true)}
             className="p-2 hover:bg-bg-tertiary rounded transition-colors"
