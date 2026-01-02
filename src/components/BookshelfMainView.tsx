@@ -1054,21 +1054,44 @@ export default function BookshelfMainView({ onOpenPdf, currentFilePath, onClose 
           )}
         </div>
 
-        {/* Import button */}
-        {selectedFiles.length > 0 && (
-          <div className="p-6 border-t border-bg-tertiary">
-            <button
-              onClick={handleImportSelectedFiles}
-              disabled={isImporting}
-              className="w-full px-4 py-3 bg-accent text-white rounded-lg font-medium hover:bg-accent/80 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              {isImporting ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <Download className="w-5 h-5" />
-              )}
-              Import {selectedFiles.length} File{selectedFiles.length > 1 ? 's' : ''}
-            </button>
+        {/* Action buttons */}
+        {(selectedFiles.length > 0 || folderPath.length > 0) && (
+          <div className="p-6 border-t border-bg-tertiary space-y-3">
+            {selectedFiles.length > 0 && (
+              <button
+                onClick={handleImportSelectedFiles}
+                disabled={isImporting}
+                className="w-full px-4 py-3 bg-accent text-white rounded-lg font-medium hover:bg-accent/80 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {isImporting ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Download className="w-5 h-5" />
+                )}
+                Import {selectedFiles.length} File{selectedFiles.length > 1 ? 's' : ''}
+              </button>
+            )}
+            {folderPath.length > 0 && (
+              <button
+                onClick={async () => {
+                  const currentFolder = folderPath[folderPath.length - 1];
+                  await addSyncFolder(currentFolder.id, currentFolder.name);
+                  setShowCloudFileBrowser(false);
+                  setFolderPath([]);
+                  setSelectedFiles([]);
+                  await sync();
+                }}
+                disabled={isImporting}
+                className={`w-full px-4 py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50 ${
+                  selectedFiles.length > 0
+                    ? 'bg-bg-tertiary text-text-primary hover:bg-bg-secondary'
+                    : 'bg-accent text-white hover:bg-accent/80'
+                }`}
+              >
+                <FolderPlus className="w-5 h-5" />
+                Sync This Folder
+              </button>
+            )}
           </div>
         )}
       </div>
