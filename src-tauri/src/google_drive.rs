@@ -45,6 +45,18 @@ pub struct DriveFile {
     pub thumbnail_link: Option<String>,
 }
 
+/// Combined item that can be either a folder or file
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DriveItem {
+    pub id: String,
+    pub name: String,
+    pub size: Option<String>,
+    pub mime_type: String,
+    pub modified_time: Option<String>,
+    pub is_folder: bool,
+}
+
 /// Response from Drive files.list API
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -102,6 +114,79 @@ pub async fn list_folders(
         .map_err(|e| PedaruError::GoogleDrive(GoogleDriveError::ApiRequestFailed(e.to_string())))?;
 
     Ok(folder_list.files)
+}
+
+/// List both folders and PDF files in a parent folder
+pub async fn list_drive_items(
+    app: &AppHandle,
+    parent_id: Option<&str>,
+) -> Result<Vec<DriveItem>, PedaruError> {
+    let access_token = get_valid_access_token(app)?;
+    let client = Client::new();
+
+    let parent = parent_id.unwrap_or("root");
+    // Get folders OR PDF files
+    let query = format!(
+        "'{}' in parents and (mimeType='application/vnd.google-apps.folder' or mimeType='application/pdf') and trashed=false",
+        parent
+    );
+
+    let response = client
+        .get(format!("{}/files", DRIVE_API_BASE))
+        .bearer_auth(&access_token)
+        .query(&[
+            ("q", query.as_str()),
+            ("fields", "files(id,name,size,mimeType,modifiedTime)"),
+            ("orderBy", "folder,name"),
+            ("pageSize", "100"),
+        ])
+        .send()
+        .await
+        .map_err(|e| PedaruError::GoogleDrive(GoogleDriveError::ApiRequestFailed(e.to_string())))?;
+
+    if !response.status().is_success() {
+        let error_text = response.text().await.unwrap_or_default();
+        return Err(PedaruError::GoogleDrive(GoogleDriveError::ListFilesFailed(
+            error_text,
+        )));
+    }
+
+// Parse raw response first
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct RawItem {
+        id: String,
+        name: String,
+        size: Option<String>,
+        mime_type: String,
+        modified_time: Option<String>,
+    }
+
+    #[derive(Deserialize)]
+    struct RawListResponse {
+        files: Vec<RawItem>,
+    }
+
+    let raw_response: RawListResponse = response
+        .json()
+        .await
+        .map_err(|e| PedaruError::GoogleDrive(GoogleDriveError::ApiRequestFailed(e.to_string())))?;
+
+    // Convert to DriveItem with is_folder flag
+    let items: Vec<DriveItem> = raw_response
+        .files
+        .into_iter()
+        .map(|item| DriveItem {
+            id: item.id,
+            name: item.name,
+            size: item.size,
+            is_folder: item.mime_type == "application/vnd.google-apps.folder",
+            mime_type: item.mime_type,
+            modified_time: item.modified_time,
+        })
+        .collect();
+
+    Ok(items)
 }
 
 /// List PDF files in a folder (handles pagination)

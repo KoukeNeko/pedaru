@@ -30,7 +30,7 @@ import {
 import { useGoogleAuth } from '@/hooks/useGoogleAuth';
 import { useBookshelf } from '@/hooks/useBookshelf';
 import { generateThumbnailsInBackground } from '@/lib/thumbnailGenerator';
-import type { BookshelfItem as BookshelfItemType, DriveFolder } from '@/types';
+import type { BookshelfItem as BookshelfItemType, DriveItem } from '@/types';
 
 interface BookshelfMainViewProps {
   onOpenPdf: (localPath: string) => void;
@@ -52,7 +52,8 @@ export default function BookshelfMainView({ onOpenPdf, currentFilePath, onClose 
     saveCredentials,
     login,
     logout,
-    listDriveFolders,
+    listDriveItems,
+    importDriveFiles,
     addSyncFolder,
     removeSyncFolder,
   } = useGoogleAuth();
@@ -82,7 +83,8 @@ export default function BookshelfMainView({ onOpenPdf, currentFilePath, onClose 
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
-  const [browseFolders, setBrowseFolders] = useState<DriveFolder[]>([]);
+  const [browseItems, setBrowseItems] = useState<DriveItem[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<DriveItem[]>([]);
   const [folderPath, setFolderPath] = useState<Array<{ id: string; name: string }>>([]);
   const [isBrowsing, setIsBrowsing] = useState(false);
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
@@ -147,24 +149,36 @@ export default function BookshelfMainView({ onOpenPdf, currentFilePath, onClose 
     })();
   }, [getItemsNeedingThumbnails, updateThumbnail, updateLocalThumbnail]);
 
-  // Browse folders
+  // Browse folders and files
   const browseFolderContents = useCallback(async (folderId: string | null) => {
     setIsBrowsing(true);
     try {
-      const folders = await listDriveFolders(folderId || undefined);
-      setBrowseFolders(folders);
+      const items = await listDriveItems(folderId || undefined);
+      setBrowseItems(items);
       setCurrentFolderId(folderId);
+      setSelectedFiles([]); // Clear selection when navigating
     } catch (err) {
       console.error('Failed to browse folders:', err);
     } finally {
       setIsBrowsing(false);
     }
-  }, [listDriveFolders]);
+  }, [listDriveItems]);
 
-  const navigateToFolder = useCallback((folder: DriveFolder) => {
-    setFolderPath((prev) => [...prev, { id: folder.id, name: folder.name }]);
-    browseFolderContents(folder.id);
+  const navigateToFolder = useCallback((item: DriveItem) => {
+    setFolderPath((prev) => [...prev, { id: item.id, name: item.name }]);
+    browseFolderContents(item.id);
   }, [browseFolderContents]);
+
+  const toggleFileSelection = useCallback((file: DriveItem) => {
+    setSelectedFiles((prev) => {
+      const isSelected = prev.some((f) => f.id === file.id);
+      if (isSelected) {
+        return prev.filter((f) => f.id !== file.id);
+      } else {
+        return [...prev, file];
+      }
+    });
+  }, []);
 
   const navigateBack = useCallback((index: number) => {
     const newPath = folderPath.slice(0, index);
@@ -178,8 +192,31 @@ export default function BookshelfMainView({ onOpenPdf, currentFilePath, onClose 
       await addSyncFolder(currentFolder.id, currentFolder.name);
       setShowFolderBrowser(false);
       setFolderPath([]);
+      setSelectedFiles([]);
+      // Trigger sync immediately after adding folder
+      await sync();
     }
-  }, [folderPath, addSyncFolder]);
+  }, [folderPath, addSyncFolder, sync]);
+
+  const handleImportSelectedFiles = useCallback(async () => {
+    if (selectedFiles.length === 0) return;
+
+    setIsImporting(true);
+    try {
+      const parentFolderId = currentFolderId || undefined;
+      const count = await importDriveFiles(selectedFiles, parentFolderId);
+      console.log(`Imported ${count} files from Google Drive`);
+      setShowFolderBrowser(false);
+      setFolderPath([]);
+      setSelectedFiles([]);
+      // Trigger sync immediately after importing files
+      await sync();
+    } catch (error) {
+      console.error('Failed to import files:', error);
+    } finally {
+      setIsImporting(false);
+    }
+  }, [selectedFiles, currentFolderId, importDriveFiles, sync]);
 
   const handleOpenPdf = useCallback(async (item: BookshelfItemType) => {
     if (item.localPath) {
@@ -706,17 +743,20 @@ export default function BookshelfMainView({ onOpenPdf, currentFilePath, onClose 
     );
   }
 
-  // Folder browser modal
+  // Folder browser modal (shows both folders and files)
   if (showFolderBrowser) {
+    const folders = browseItems.filter(item => item.isFolder);
+    const files = browseItems.filter(item => !item.isFolder);
+
     return (
       <div className="h-full flex flex-col bg-bg-primary">
         <div className="flex items-center justify-between px-6 py-4 border-b border-bg-tertiary">
           <div className="flex items-center gap-3">
-            <FolderPlus className="w-5 h-5 text-accent" />
-            <span className="text-lg font-medium text-text-primary">Select Folder</span>
+            <Cloud className="w-5 h-5 text-accent" />
+            <span className="text-lg font-medium text-text-primary">Import from Google Drive</span>
           </div>
           <button
-            onClick={() => { setShowFolderBrowser(false); setFolderPath([]); }}
+            onClick={() => { setShowFolderBrowser(false); setFolderPath([]); setSelectedFiles([]); }}
             className="p-2 hover:bg-bg-tertiary rounded"
           >
             <X className="w-5 h-5 text-text-secondary" />
@@ -742,36 +782,100 @@ export default function BookshelfMainView({ onOpenPdf, currentFilePath, onClose 
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-8 h-8 text-accent animate-spin" />
             </div>
-          ) : browseFolders.length === 0 ? (
-            <div className="text-center py-12 text-text-tertiary">No folders found</div>
+          ) : browseItems.length === 0 ? (
+            <div className="text-center py-12 text-text-tertiary">No folders or PDF files found</div>
           ) : (
-            <ul className="space-y-2">
-              {browseFolders.map((folder, index) => (
-                <li key={folder.id || `folder-${index}`}>
-                  <button
-                    onClick={() => navigateToFolder(folder)}
-                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-bg-tertiary rounded-lg text-left"
-                  >
-                    <FolderPlus className="w-5 h-5 text-accent" />
-                    <span className="text-text-primary truncate">{folder.name}</span>
-                    <ChevronRight className="w-5 h-5 text-text-tertiary ml-auto" />
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <div className="space-y-4">
+              {/* Folders section */}
+              {folders.length > 0 && (
+                <div>
+                  <h3 className="text-xs uppercase text-text-tertiary mb-2 px-2">Folders</h3>
+                  <ul className="space-y-1">
+                    {folders.map((folder, index) => (
+                      <li key={folder.id || `folder-${index}`}>
+                        <button
+                          onClick={() => navigateToFolder(folder)}
+                          className="w-full px-4 py-3 flex items-center gap-3 hover:bg-bg-tertiary rounded-lg text-left"
+                        >
+                          <FolderOpen className="w-5 h-5 text-accent" />
+                          <span className="text-text-primary truncate flex-1">{folder.name}</span>
+                          <ChevronRight className="w-5 h-5 text-text-tertiary" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Files section */}
+              {files.length > 0 && (
+                <div>
+                  <h3 className="text-xs uppercase text-text-tertiary mb-2 px-2">PDF Files</h3>
+                  <ul className="space-y-1">
+                    {files.map((file, index) => {
+                      const isSelected = selectedFiles.some((f) => f.id === file.id);
+                      return (
+                        <li key={file.id || `file-${index}`}>
+                          <button
+                            onClick={() => toggleFileSelection(file)}
+                            className={`w-full px-4 py-3 flex items-center gap-3 rounded-lg text-left transition-colors ${
+                              isSelected ? 'bg-accent/20 border border-accent' : 'hover:bg-bg-tertiary border border-transparent'
+                            }`}
+                          >
+                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                              isSelected ? 'bg-accent border-accent' : 'border-text-tertiary'
+                            }`}>
+                              {isSelected && <Check className="w-3 h-3 text-white" />}
+                            </div>
+                            <FileText className="w-5 h-5 text-text-secondary" />
+                            <span className="text-text-primary truncate flex-1">{file.name}</span>
+                            {file.size && (
+                              <span className="text-xs text-text-tertiary">
+                                {(parseInt(file.size) / (1024 * 1024)).toFixed(1)} MB
+                              </span>
+                            )}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
-        {folderPath.length > 0 && (
-          <div className="p-6 border-t border-bg-tertiary">
+        {/* Action buttons */}
+        <div className="p-6 border-t border-bg-tertiary space-y-3">
+          {selectedFiles.length > 0 && (
+            <button
+              onClick={handleImportSelectedFiles}
+              disabled={isImporting}
+              className="w-full px-4 py-3 bg-accent text-white rounded-lg font-medium hover:bg-accent/80 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {isImporting ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <Download className="w-5 h-5" />
+              )}
+              Import {selectedFiles.length} File{selectedFiles.length > 1 ? 's' : ''}
+            </button>
+          )}
+          {folderPath.length > 0 && (
             <button
               onClick={handleAddCurrentFolder}
-              className="w-full px-4 py-3 bg-accent text-white rounded-lg font-medium hover:bg-accent/80 transition-colors"
+              disabled={isImporting}
+              className={`w-full px-4 py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50 ${
+                selectedFiles.length > 0
+                  ? 'bg-bg-tertiary text-text-primary hover:bg-bg-secondary'
+                  : 'bg-accent text-white hover:bg-accent/80'
+              }`}
             >
-              Add This Folder
+              <FolderPlus className="w-5 h-5" />
+              Sync This Folder
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     );
   }

@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
-import type { AuthStatus, DriveFolder, StoredFolder } from '@/types';
+import type { AuthStatus, DriveFolder, DriveItem, StoredFolder } from '@/types';
 
 /**
  * Hook for managing Google OAuth authentication and Drive folder configuration
@@ -165,6 +165,35 @@ export function useGoogleAuth() {
   }, []);
 
   /**
+   * List both folders and files in Google Drive
+   */
+  const listDriveItems = useCallback(async (parentId?: string): Promise<DriveItem[]> => {
+    try {
+      const items = await invoke<DriveItem[]>('list_drive_items', { parentId });
+      return items;
+    } catch (err) {
+      console.error('Failed to list drive items:', err);
+      setError(String(err));
+      return [];
+    }
+  }, []);
+
+  /**
+   * Import specific files from Google Drive
+   * @returns The number of files imported
+   */
+  const importDriveFiles = useCallback(async (files: DriveItem[], parentFolderId?: string): Promise<number> => {
+    try {
+      const count = await invoke<number>('import_drive_files', { files, parentFolderId });
+      return count;
+    } catch (err) {
+      console.error('Failed to import drive files:', err);
+      setError(String(err));
+      return 0;
+    }
+  }, []);
+
+  /**
    * Add a folder to sync list
    */
   const addSyncFolder = useCallback(async (folderId: string, folderName: string) => {
@@ -211,6 +240,8 @@ export function useGoogleAuth() {
     // Folder actions
     loadSyncedFolders,
     listDriveFolders,
+    listDriveItems,
+    importDriveFiles,
     addSyncFolder,
     removeSyncFolder,
   };

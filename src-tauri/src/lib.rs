@@ -189,6 +189,48 @@ async fn list_drive_folders(
         .map_err(|e| e.into_tauri_error())
 }
 
+/// List both folders and files in Google Drive
+#[tauri::command(rename_all = "camelCase")]
+async fn list_drive_items(
+    app: tauri::AppHandle,
+    parent_id: Option<String>,
+) -> Result<Vec<google_drive::DriveItem>, String> {
+    google_drive::list_drive_items(&app, parent_id.as_deref())
+        .await
+        .map_err(|e| e.into_tauri_error())
+}
+
+/// Import specific files from Google Drive
+#[tauri::command(rename_all = "camelCase")]
+fn import_drive_files(
+    app: tauri::AppHandle,
+    files: Vec<google_drive::DriveItem>,
+    parent_folder_id: Option<String>,
+) -> Result<i32, String> {
+    let folder_id = parent_folder_id.unwrap_or_else(|| "__imported__".to_string());
+    let mut imported_count = 0;
+
+    for file in files {
+        if file.is_folder {
+            continue; // Skip folders, only import files
+        }
+        let file_size: Option<i64> = file.size.as_ref().and_then(|s| s.parse().ok());
+        bookshelf::upsert_item(
+            &app,
+            &file.id,
+            &folder_id,
+            &file.name,
+            file_size,
+            &file.mime_type,
+            file.modified_time.as_deref(),
+        )
+        .map_err(|e| e.into_tauri_error())?;
+        imported_count += 1;
+    }
+
+    Ok(imported_count)
+}
+
 /// Add a folder to sync list
 #[tauri::command(rename_all = "camelCase")]
 fn add_drive_folder(
@@ -682,6 +724,8 @@ pub fn run() {
             get_google_auth_status,
             logout_google,
             list_drive_folders,
+            list_drive_items,
+            import_drive_files,
             add_drive_folder,
             remove_drive_folder,
             get_drive_folders,

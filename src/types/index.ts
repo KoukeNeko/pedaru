@@ -149,6 +149,18 @@ export interface DriveFolder {
 }
 
 /**
+ * A combined item from Google Drive (can be folder or file)
+ */
+export interface DriveItem {
+  id: string;
+  name: string;
+  size?: string;
+  mimeType: string;
+  modifiedTime?: string;
+  isFolder: boolean;
+}
+
+/**
  * A stored folder configuration
  */
 export interface StoredFolder {
