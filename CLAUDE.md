@@ -8,6 +8,14 @@ Pedaru is a cross-platform desktop PDF viewer built with Tauri 2.x and React/Nex
 
 ## Development Commands
 
+### Prerequisites
+
+- Node.js >= 18.17.0
+- Rust >= 1.85
+- Tauri CLI
+
+### Setup
+
 ```bash
 # Development
 npm install                      # Install dependencies
@@ -27,6 +35,67 @@ npm run test:coverage            # Run tests with coverage report
 npx tsc --noEmit                 # TypeScript type checking
 cargo clippy -- -D warnings      # Rust linting (in src-tauri/)
 cargo fmt -- --check             # Rust formatting check (in src-tauri/)
+```
+
+### Debugging
+
+#### Testing PDF File Opening
+
+To test opening a PDF file via command line (simulating double-click behavior):
+
+```bash
+# Use absolute path (relative paths won't work)
+npm run tauri dev -- -- /absolute/path/to/file.pdf
+
+# Example
+npm run tauri dev -- -- /Users/username/Documents/sample.pdf
+```
+
+To test without opening a PDF (restores last opened file):
+
+```bash
+npm run tauri dev
+```
+
+#### Viewing Logs
+
+**Development mode (`npm run tauri dev`):**
+- Rust logs (`eprintln!`) appear in the terminal
+- Frontend logs (`console.log`) appear in the WebView DevTools (right-click → Inspect Element)
+
+**Production build:**
+
+```bash
+# Build with debug symbols
+npm run tauri build -- --debug
+
+# Run the app and view logs in Console.app (macOS)
+# Filter by "Pedaru" to see app-specific logs
+open /Applications/Utilities/Console.app
+```
+
+Or run the built app from terminal to see logs:
+
+```bash
+# After building
+./src-tauri/target/release/bundle/macos/Pedaru.app/Contents/MacOS/Pedaru
+```
+
+#### Testing File Associations (macOS)
+
+File associations only work with the built app:
+
+```bash
+# Build the app
+npm run tauri build
+
+# The app is created at:
+# src-tauri/target/release/bundle/macos/Pedaru.app
+
+# Test by:
+# 1. Right-click a PDF in Finder → Open With → Pedaru
+# 2. Or drag a PDF onto Pedaru.app icon
+# 3. Or double-click a PDF after setting Pedaru as default PDF app
 ```
 
 **Test Documentation:**
@@ -360,20 +429,6 @@ When adding new stateful features:
 3. Pass as props to presentational components
 4. Add to session storage schema in `src/lib/sessionStorage.ts`
 5. Include in debounced save logic in `page.tsx`
-
-### Logging
-
-- **Rust:** Use `eprintln!()` for console output (appears in terminal during development)
-- **Frontend:** Use `console.log()` (appears in WebView DevTools - right-click → Inspect)
-
-### Testing File Opening
-
-To test "Open With" or double-click behavior:
-```bash
-npm run tauri dev -- -- /absolute/path/to/file.pdf
-```
-
-Note: Relative paths don't work. File associations only work with built apps, not dev mode.
 
 ## Platform-Specific Considerations
 
