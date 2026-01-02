@@ -4,9 +4,9 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import { Loader2, FileQuestion, Bookmark } from 'lucide-react';
 import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
-import { ViewMode } from './Settings';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import CustomTextLayer from './CustomTextLayer';
+import type { PdfViewerProps, PageWithCustomTextLayerProps } from '@/types/components';
 
 // Set up PDF.js worker from CDN (local bundling doesn't work well with Next.js)
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -14,17 +14,6 @@ pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.vers
 // Configure cMap for CJK fonts support
 const cMapUrl = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/cmaps/`;
 const cMapPacked = true;
-
-// Page wrapper component that handles custom text layer
-interface PageWithCustomTextLayerProps {
-  pageNumber: number;
-  scale: number;
-  searchQuery?: string;
-  focusedMatchIndex?: number;
-  pdfDocument: pdfjs.PDFDocumentProxy | null;
-  bookmarkedPages: number[];
-  onToggleBookmark?: (page: number) => void;
-}
 
 function PageWithCustomTextLayer({
   pageNumber,
@@ -113,24 +102,6 @@ function PageWithCustomTextLayer({
       <div className="absolute inset-0 border-2 border-transparent group-hover:border-accent/50 transition-colors pointer-events-none rounded" />
     </div>
   );
-}
-
-interface PdfViewerProps {
-  fileData: Uint8Array | null;
-  currentPage: number;
-  totalPages: number;
-  zoom: number;
-  viewMode: ViewMode;
-  filePath: string | null;
-  openedPages?: Set<number>;
-  searchQuery?: string;
-  focusedSearchPage?: number;
-  focusedSearchMatchIndex?: number;
-  bookmarkedPages?: number[];
-  onToggleBookmark?: (page: number) => void;
-  onLoadSuccess: (numPages: number) => void;
-  onDocumentLoad?: (pdf: any) => void;
-  onNavigatePage?: (pageNumber: number) => void;
 }
 
 export default function PdfViewer({

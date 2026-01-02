@@ -2,14 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { Copy, Languages, Sparkles } from 'lucide-react';
-
-interface ContextMenuProps {
-  position: { x: number; y: number };
-  onCopy: () => void;
-  onTranslate: () => void;
-  onExplain: () => void;
-  onClose: () => void;
-}
+import type { ContextMenuProps } from '@/types/components';
 
 export default function ContextMenu({
   position,

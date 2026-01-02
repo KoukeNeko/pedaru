@@ -18,43 +18,7 @@ import {
   Bookmark,
   Library,
 } from 'lucide-react';
-import { ViewMode } from './Settings';
-
-interface HeaderProps {
-  fileName: string | null;
-  pdfTitle: string | null;
-  currentPage: number;
-  totalPages: number;
-  zoom: number;
-  viewMode: ViewMode;
-  isLoading: boolean;
-  showHistory: boolean;
-  showWindows: boolean;
-  showBookmarks: boolean;
-  showBookshelf: boolean;
-  searchQuery: string;
-  searchResultCount: number;
-  currentSearchIndex: number;
-  windowCount: number;
-  tabCount: number;
-  bookmarkCount: number;
-  onOpenFile: () => void;
-  onPrevPage: () => void;
-  onNextPage: () => void;
-  onPageChange: (page: number) => void;
-  onZoomIn: () => void;
-  onZoomOut: () => void;
-  onToggleToc: () => void;
-  onViewModeChange: (mode: ViewMode) => void;
-  onToggleHistory: () => void;
-  onToggleWindows: () => void;
-  onToggleBookmarks: () => void;
-  onToggleBookshelf: () => void;
-  onSearchChange: (query: string) => void;
-  onSearchPrev: () => void;
-  onSearchNext: () => void;
-  onCloseAllWindows: () => void;
-}
+import type { HeaderProps } from '@/types/components';
 
 export default function Header({
   fileName,

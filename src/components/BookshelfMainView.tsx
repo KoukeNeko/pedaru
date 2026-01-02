@@ -31,12 +31,7 @@ import { useGoogleAuth } from '@/hooks/useGoogleAuth';
 import { useBookshelf } from '@/hooks/useBookshelf';
 import { generateThumbnailsInBackground } from '@/lib/thumbnailGenerator';
 import type { BookshelfItem as BookshelfItemType, DriveItem } from '@/types';
-
-interface BookshelfMainViewProps {
-  onOpenPdf: (localPath: string) => void;
-  currentFilePath?: string | null;
-  onClose?: () => void;
-}
+import type { BookshelfMainViewProps } from '@/types/components';
 
 /**
  * Main view bookshelf component for full-screen book selection

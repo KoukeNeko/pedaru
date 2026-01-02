@@ -3,19 +3,10 @@
 import { ExternalLink, X, Loader2 } from 'lucide-react';
 import type { SearchResult } from '@/types';
 import { useAutoScroll } from '@/hooks/useAutoScroll';
+import type { SearchResultsSidebarProps } from '@/types/components';
 
 // Re-export for backward compatibility
 export type { SearchResult };
-
-interface SearchResultsSidebarProps {
-  query: string;
-  results: SearchResult[];
-  currentIndex: number;
-  isSearching: boolean;
-  onSelect: (index: number) => void;
-  onOpenInWindow: (page: number) => void;
-  onClose: () => void;
-}
 
 export default function SearchResultsSidebar({
   query,

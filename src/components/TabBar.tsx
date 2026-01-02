@@ -1,22 +1,7 @@
 'use client';
 
 import type { Tab } from '@/types';
-
-interface TabBarProps {
-  tabs: Tab[];
-  activeTabId: number | null;
-  openWindowsCount: number;
-  // Handlers
-  selectTab: (tabId: number) => void;
-  closeTab: (tabId: number) => void;
-  openStandaloneWindow: (page: number) => void;
-  moveWindowToTab: (label: string, page: number) => void;
-  navigateToPageWithoutTabUpdate: (page: number) => void;
-  goToPage: (page: number) => void;
-  closePdf: () => void;
-  setTabs: React.Dispatch<React.SetStateAction<Tab[]>>;
-  setActiveTabId: React.Dispatch<React.SetStateAction<number | null>>;
-}
+import type { TabBarProps } from '@/types/components';
 
 /**
  * Tab bar component for managing multiple PDF tabs.

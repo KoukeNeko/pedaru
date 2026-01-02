@@ -1,26 +1,6 @@
 'use client';
 
-import { type ReactNode } from 'react';
-
-interface SidebarContainerProps {
-  /**
-   * Header content to display at the top of the sidebar
-   */
-  header: ReactNode;
-  /**
-   * Main content of the sidebar
-   */
-  children: ReactNode;
-  /**
-   * Optional className for the sidebar container
-   */
-  className?: string;
-  /**
-   * Width class for the sidebar
-   * @default 'w-64'
-   */
-  width?: string;
-}
+import type { SidebarContainerProps } from '@/types/components';
 
 /**
  * Reusable sidebar container component with consistent styling.

@@ -3,6 +3,7 @@ import {
   WebviewWindow,
   getAllWebviewWindows,
 } from '@tauri-apps/api/webviewWindow';
+import { getTabLabel, getWindowTitle } from '@/lib/formatUtils';
 import type { OpenWindow, PdfInfo, ViewMode, Tab, WindowState } from './types';
 
 /**
@@ -100,7 +101,7 @@ export function useWindowManagement(
       try {
         const webview = new WebviewWindow(windowLabel, {
           url,
-          title: chapter ? `${chapter} (Page ${pageNumber})` : `Page ${pageNumber}`,
+          title: getWindowTitle(pageNumber, chapter),
           width: 900,
           height: 1100,
           resizable: true,
@@ -205,7 +206,7 @@ export function useWindowManagement(
       setTabs((prev) => {
         const id = tabIdRef.current++;
         const chapter = getChapterForPage(page);
-        const tabLabel = chapter ? `P${page}: ${chapter}` : `Page ${page}`;
+        const tabLabel = getTabLabel(page, chapter);
         const next = [...prev, { id, page, label: tabLabel }];
         setActiveTabId(id);
         return next;

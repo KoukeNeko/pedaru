@@ -7,15 +7,7 @@ import { emitTo, listen } from '@tauri-apps/api/event';
 import ReactMarkdown from 'react-markdown';
 import type { TextSelection, GeminiSettings, TranslationResponse, ViewMode } from '@/types';
 import { translateWithGemini, explainTranslation, isGeminiConfigured, getGeminiSettings, GEMINI_MODELS } from '@/lib/settings';
-
-interface TranslationPopupProps {
-  selection: TextSelection;
-  autoExplain?: boolean;
-  onClose: () => void;
-  onOpenSettings?: () => void;
-  viewMode?: ViewMode;
-  currentPage?: number;
-}
+import type { TranslationPopupProps } from '@/types/components';
 
 // Custom components for ReactMarkdown to render ***text*** with yellow highlight
 const markdownComponents = {

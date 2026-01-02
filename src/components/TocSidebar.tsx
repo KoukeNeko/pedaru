@@ -3,20 +3,7 @@
 import { TocEntry } from '@/types/pdf';
 import { ChevronRight, FileText } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-
-interface TocSidebarProps {
-  toc: TocEntry[];
-  currentPage: number;
-  isOpen: boolean;
-  onPageSelect: (page: number) => void;
-}
-
-interface TocItemProps {
-  entry: TocEntry;
-  depth: number;
-  currentPage: number;
-  onPageSelect: (page: number) => void;
-}
+import type { TocSidebarProps, TocItemProps } from '@/types/components';
 
 // Helper: check if a TocEntry tree contains a specific page
 function containsPage(entry: TocEntry, page: number): boolean {

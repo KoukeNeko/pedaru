@@ -2,6 +2,7 @@ import { useCallback, useMemo, Dispatch, SetStateAction } from 'react';
 import { emit } from '@tauri-apps/api/event';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { getChapterForPage as getChapter } from '@/lib/pdfUtils';
+import { getTabLabel, getWindowTitle } from '@/lib/formatUtils';
 import type { HistoryEntry, Tab, ViewMode, PdfInfo } from './types';
 
 /**
@@ -43,6 +44,25 @@ export function useNavigation(
   const getChapterForPage = useCallback(
     (page: number) => getChapter(pdfInfo, page),
     [pdfInfo]
+  );
+
+  /**
+   * Helper to update the active tab's page and label
+   */
+  const updateActiveTabLabel = useCallback(
+    (page: number) => {
+      setTabs((prev) =>
+        prev.map((tab) => {
+          if (tab.id === activeTabId) {
+            const chapter = getChapterForPage(page);
+            const label = getTabLabel(page, chapter);
+            return { ...tab, page, label };
+          }
+          return tab;
+        })
+      );
+    },
+    [activeTabId, getChapterForPage, setTabs]
   );
 
   /**
@@ -103,7 +123,7 @@ export function useNavigation(
           const win = getCurrentWebviewWindow();
           // Update native window title
           const chapter = getChapterForPage(page);
-          const title = chapter ? `${chapter} (Page ${page})` : `Page ${page}`;
+          const title = getWindowTitle(page, chapter);
 
           // Update both document.title and native window title
           document.title = title;
@@ -116,25 +136,15 @@ export function useNavigation(
         }
 
         // Update active tab's page and label to match current page
-        setTabs((prev) =>
-          prev.map((tab) => {
-            if (tab.id === activeTabId) {
-              const chapter = getChapterForPage(page);
-              const label = chapter ? `P${page}: ${chapter}` : `Page ${page}`;
-              return { ...tab, page, label };
-            }
-            return tab;
-          })
-        );
+        updateActiveTabLabel(page);
       }
     },
     [
       totalPages,
-      activeTabId,
       isStandaloneMode,
       getChapterForPage,
+      updateActiveTabLabel,
       setCurrentPage,
-      setTabs,
     ]
   );
 
@@ -152,7 +162,7 @@ export function useNavigation(
           const win = getCurrentWebviewWindow();
           // Update native window title
           const chapter = getChapterForPage(page);
-          const title = chapter ? `${chapter} (Page ${page})` : `Page ${page}`;
+          const title = getWindowTitle(page, chapter);
 
           // Update both document.title and native window title
           document.title = title;
@@ -165,16 +175,7 @@ export function useNavigation(
         }
 
         // Update active tab's page and label to match current page
-        setTabs((prev) =>
-          prev.map((tab) => {
-            if (tab.id === activeTabId) {
-              const chapter = getChapterForPage(page);
-              const label = chapter ? `P${page}: ${chapter}` : `Page ${page}`;
-              return { ...tab, page, label };
-            }
-            return tab;
-          })
-        );
+        updateActiveTabLabel(page);
 
         // Push into history when user-driven navigation occurs
         setPageHistory((prev) => {
@@ -198,12 +199,11 @@ export function useNavigation(
     [
       totalPages,
       historyIndex,
-      activeTabId,
       isStandaloneMode,
       getChapterForPage,
+      updateActiveTabLabel,
       pageHistory,
       setCurrentPage,
-      setTabs,
       setPageHistory,
       setHistoryIndex,
     ]
@@ -247,20 +247,11 @@ export function useNavigation(
       const page = entry.page;
       setCurrentPage(page);
       // Update active tab's page and label
-      setTabs((prev) =>
-        prev.map((tab) => {
-          if (tab.id === activeTabId) {
-            const chapter = getChapterForPage(page);
-            const label = chapter ? `P${page}: ${chapter}` : `Page ${page}`;
-            return { ...tab, page, label };
-          }
-          return tab;
-        })
-      );
+      updateActiveTabLabel(page);
       // Update window title in standalone mode
       if (isStandaloneMode) {
         const chapter = getChapterForPage(page);
-        const title = chapter ? `${chapter} (Page ${page})` : `Page ${page}`;
+        const title = getWindowTitle(page, chapter);
         document.title = title;
         getCurrentWebviewWindow().setTitle(title).catch(console.warn);
       }
@@ -270,10 +261,9 @@ export function useNavigation(
     pageHistory,
     isStandaloneMode,
     getChapterForPage,
-    activeTabId,
+    updateActiveTabLabel,
     setHistoryIndex,
     setCurrentPage,
-    setTabs,
   ]);
 
   /**
@@ -290,20 +280,11 @@ export function useNavigation(
       const page = entry.page;
       setCurrentPage(page);
       // Update active tab's page and label
-      setTabs((prev) =>
-        prev.map((tab) => {
-          if (tab.id === activeTabId) {
-            const chapter = getChapterForPage(page);
-            const label = chapter ? `P${page}: ${chapter}` : `Page ${page}`;
-            return { ...tab, page, label };
-          }
-          return tab;
-        })
-      );
+      updateActiveTabLabel(page);
       // Update window title in standalone mode
       if (isStandaloneMode) {
         const chapter = getChapterForPage(page);
-        const title = chapter ? `${chapter} (Page ${page})` : `Page ${page}`;
+        const title = getWindowTitle(page, chapter);
         document.title = title;
         getCurrentWebviewWindow().setTitle(title).catch(console.warn);
       }
@@ -313,10 +294,9 @@ export function useNavigation(
     pageHistory,
     isStandaloneMode,
     getChapterForPage,
-    activeTabId,
+    updateActiveTabLabel,
     setHistoryIndex,
     setCurrentPage,
-    setTabs,
   ]);
 
   return {

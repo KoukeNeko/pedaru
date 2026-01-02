@@ -6,16 +6,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
 import type { ViewMode, GeminiSettings, AuthStatus } from '@/types';
 import { getGeminiSettings, saveGeminiSettings, DEFAULT_GEMINI_SETTINGS, GEMINI_MODELS } from '@/lib/settings';
+import type { SettingsProps } from '@/types/components';
 
 // Re-export for backward compatibility
 export type { ViewMode };
-
-interface SettingsProps {
-  isOpen: boolean;
-  viewMode: ViewMode;
-  onViewModeChange: (mode: ViewMode) => void;
-  onClose: () => void;
-}
 
 export default function Settings({
   isOpen,

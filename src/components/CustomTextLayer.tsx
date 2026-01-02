@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
+import type { CustomTextLayerProps } from '@/types/components';
 
 // TextItem type definition (not exported from pdfjs-dist main module)
 interface TextItem {
@@ -19,14 +20,6 @@ interface ProcessedTextItem extends TextItem {
   fontSize: number;
   angle: number;
   targetWidth: number;
-}
-
-interface CustomTextLayerProps {
-  page: pdfjsLib.PDFPageProxy;
-  scale: number;
-  pageNumber: number;
-  searchQuery?: string;
-  focusedMatchIndex?: number; // Which match on this page is currently focused (0-indexed)
 }
 
 export default function CustomTextLayer({ page, scale, pageNumber, searchQuery, focusedMatchIndex }: CustomTextLayerProps) {

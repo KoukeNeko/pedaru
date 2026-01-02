@@ -3,37 +3,7 @@
 import { Columns, History, PanelTop, Bookmark as BookmarkIcon, Search, X, List } from 'lucide-react';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { emit } from '@tauri-apps/api/event';
-import type { RefObject } from 'react';
-import type { ViewMode, Bookmark } from '@/types';
-
-interface StandaloneWindowControlsProps {
-  currentPage: number;
-  totalPages: number;
-  zoom: number;
-  viewMode: ViewMode;
-  isTocOpen: boolean;
-  showHistory: boolean;
-  showStandaloneSearch: boolean;
-  searchQuery: string;
-  bookmarks: Bookmark[];
-  isCurrentPageBookmarked: boolean;
-  canGoBack: boolean;
-  canGoForward: boolean;
-  standaloneSearchInputRef: RefObject<HTMLInputElement | null>;
-  // Handlers
-  goBack: () => void;
-  goForward: () => void;
-  goToPrevPage: () => void;
-  goToNextPage: () => void;
-  setIsTocOpen: (fn: (prev: boolean) => boolean) => void;
-  setViewMode: (fn: (prev: ViewMode) => ViewMode) => void;
-  setShowHistory: (fn: (prev: boolean) => boolean) => void;
-  toggleBookmark: () => void;
-  handleZoomIn: () => void;
-  handleZoomOut: () => void;
-  setShowStandaloneSearch: (value: boolean) => void;
-  setSearchQuery: (query: string) => void;
-}
+import type { StandaloneWindowControlsProps } from '@/types/components';
 
 /**
  * Floating navigation controls for standalone PDF windows.

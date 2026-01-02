@@ -5,17 +5,10 @@ import { Bookmark as BookmarkIcon, Trash2, ArrowUpDown } from 'lucide-react';
 import type { Bookmark } from '@/types';
 import { useAutoScroll } from '@/hooks/useAutoScroll';
 import { formatDateTime } from '@/lib/formatUtils';
+import type { BookmarkSidebarProps } from '@/types/components';
 
 // Re-export for backward compatibility
 export type { Bookmark };
-
-interface BookmarkSidebarProps {
-  bookmarks: Bookmark[];
-  currentPage: number;
-  onSelect: (page: number) => void;
-  onRemove: (page: number) => void;
-  onClear?: () => void;
-}
 
 type SortMode = 'date' | 'page';
 

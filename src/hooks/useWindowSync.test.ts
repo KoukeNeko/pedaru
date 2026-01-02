@@ -31,6 +31,9 @@ vi.mock('@/lib/formatUtils', () => ({
   getTabLabel: vi.fn((page: number, chapter?: string) =>
     chapter ? `P${page}: ${chapter}` : `Page ${page}`
   ),
+  getWindowTitle: vi.fn((page: number, chapter?: string) =>
+    chapter ? `${chapter} (Page ${page})` : `Page ${page}`
+  ),
 }));
 
 describe('useWindowSync', () => {

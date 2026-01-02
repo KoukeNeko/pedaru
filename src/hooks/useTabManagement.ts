@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, Dispatch, SetStateAction, MutableRefObject } from 'react';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { getTabLabel } from '@/lib/formatUtils';
 import type { Tab, PdfInfo, TabState } from './types';
 
 /**
@@ -81,7 +82,7 @@ export function useTabManagement(
         tabsToRestore.forEach((tab, index) => {
           const newId = tabIdRef.current++;
           const chapter = getChapterForPage(tab.page);
-          const label = chapter ? `P${tab.page}: ${chapter}` : `Page ${tab.page}`;
+          const label = getTabLabel(tab.page, chapter);
           restoredTabs.push({ id: newId, page: tab.page, label });
 
           // Set active tab based on saved index
@@ -103,7 +104,7 @@ export function useTabManagement(
         initialTabCreatedRef.current = true;
         const newId = tabIdRef.current++;
         const chapter = getChapterForPage(currentPage);
-        const label = chapter ? `P${currentPage}: ${chapter}` : `Page ${currentPage}`;
+        const label = getTabLabel(currentPage, chapter);
         setTabs([{ id: newId, page: currentPage, label }]);
         setActiveTabId(newId);
       }
@@ -127,7 +128,7 @@ export function useTabManagement(
     setTabs((prev) => {
       const id = tabIdRef.current++;
       const chapter = getChapterForPage(currentPage);
-      const label = chapter ? `P${currentPage}: ${chapter}` : `Page ${currentPage}`;
+      const label = getTabLabel(currentPage, chapter);
       return [...prev, { id, page: currentPage, label }];
     });
     setActiveTabId(tabIdRef.current - 1);
@@ -140,7 +141,7 @@ export function useTabManagement(
     (pageNumber: number) => {
       const newId = tabIdRef.current++;
       const chapter = getChapterForPage(pageNumber);
-      const label = chapter ? `P${pageNumber}: ${chapter}` : `Page ${pageNumber}`;
+      const label = getTabLabel(pageNumber, chapter);
       setTabs((prev) => [...prev, { id: newId, page: pageNumber, label }]);
       setActiveTabId(newId);
       navigateToPageWithoutTabUpdate(pageNumber);

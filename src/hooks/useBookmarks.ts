@@ -1,6 +1,7 @@
 import { useCallback, useMemo, Dispatch, SetStateAction } from 'react';
 import { emit } from '@tauri-apps/api/event';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { getTabLabel } from '@/lib/formatUtils';
 import type { Bookmark } from './types';
 
 /**
@@ -43,7 +44,7 @@ export function useBookmarks(
     } else {
       // Add bookmark
       const chapter = getChapterForPage(currentPage);
-      const label = chapter ? `P${currentPage}: ${chapter}` : `Page ${currentPage}`;
+      const label = getTabLabel(currentPage, chapter);
       newBookmarks = [...bookmarks, { page: currentPage, label, createdAt: Date.now() }];
     }
     setBookmarks(newBookmarks);

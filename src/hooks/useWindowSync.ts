@@ -2,7 +2,7 @@ import { useCallback, useEffect, Dispatch, SetStateAction, MutableRefObject } fr
 import { emit } from '@tauri-apps/api/event';
 import { getCurrentWebviewWindow, WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { useTauriEventListener } from '@/lib/eventUtils';
-import { getTabLabel } from '@/lib/formatUtils';
+import { getTabLabel, getWindowTitle } from '@/lib/formatUtils';
 import type { ViewMode, Bookmark, Tab, OpenWindow } from './types';
 
 /**
@@ -45,9 +45,7 @@ export function useWindowSync(
       );
       WebviewWindow.getByLabel(label).then((win) => {
         if (win) {
-          win
-            .setTitle(chapter ? `${chapter} (Page ${page})` : `Page ${page}`)
-            .catch(console.warn);
+          win.setTitle(getWindowTitle(page, chapter)).catch(console.warn);
         }
       });
     },

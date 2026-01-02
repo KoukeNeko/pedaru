@@ -1,30 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import dynamic from 'next/dynamic';
 import { open } from '@tauri-apps/plugin-dialog';
-import Header from '@/components/Header';
-import { Loader2 } from 'lucide-react';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
-import TocSidebar from '@/components/TocSidebar';
-import HistorySidebar from '@/components/HistorySidebar';
-import WindowSidebar from '@/components/WindowSidebar';
-import BookmarkSidebar from '@/components/BookmarkSidebar';
-import SearchResultsSidebar from '@/components/SearchResultsSidebar';
-import BookshelfMainView from '@/components/BookshelfMainView';
 import { StandaloneWindowControls } from '@/components/StandaloneWindowControls';
-import { TabBar } from '@/components/TabBar';
+import MainWindowHeader from '@/components/MainWindowHeader';
+import MainSidebar from '@/components/MainSidebar';
+import ViewerContent from '@/components/ViewerContent';
+import OverlayContainer from '@/components/OverlayContainer';
 import type { ViewMode, Bookmark, TabState, WindowState } from '@/types';
 
-// Dynamic import for PdfViewer to avoid SSR issues with pdfjs-dist
-const PdfViewer = dynamic(() => import('@/components/PdfViewer'), {
-  ssr: false,
-  loading: () => (
-    <div className="flex-1 flex items-center justify-center bg-bg-primary">
-      <Loader2 className="w-10 h-10 animate-spin text-accent" />
-    </div>
-  ),
-});
 import { getTabLabel } from '@/lib/formatUtils';
 import { getChapterForPage as getChapter } from '@/lib/pdfUtils';
 import { useTauriEventListener } from '@/lib/eventUtils';
@@ -46,9 +31,6 @@ import { useSessionPersistence } from '@/hooks/useSessionPersistence';
 import { useMenuHandlers } from '@/hooks/useMenuHandlers';
 import { useWindowSync } from '@/hooks/useWindowSync';
 import type { OpenWindow, Tab, HistoryEntry } from '@/hooks/types';
-import TranslationPopup from '@/components/TranslationPopup';
-import ContextMenu from '@/components/ContextMenu';
-import Settings from '@/components/Settings';
 
 export default function Home() {
   // Debug: Log immediately on component mount
@@ -519,8 +501,10 @@ export default function Home() {
 
   return (
     <main className="flex flex-col h-screen bg-bg-primary relative group">
-      {!isStandaloneMode && showHeader && (
-        <Header
+      {/* Main window header (Header + TabBar) */}
+      {!isStandaloneMode && (
+        <MainWindowHeader
+          showHeader={showHeader}
           fileName={fileName}
           pdfTitle={pdfInfo?.title || null}
           currentPage={currentPage}
@@ -531,9 +515,13 @@ export default function Home() {
           showHistory={showHistory}
           showBookmarks={showBookmarks}
           showBookshelf={showBookshelf}
+          showWindows={showWindows}
           searchQuery={searchQuery}
           searchResultCount={searchResults.length}
           currentSearchIndex={currentSearchIndex}
+          windowCount={openWindows.length}
+          tabCount={tabs.length}
+          bookmarkCount={bookmarks.length}
           onOpenFile={handleOpenFile}
           onPrevPage={goToPrevPage}
           onNextPage={goToNextPage}
@@ -549,17 +537,7 @@ export default function Home() {
           onSearchChange={handleSearchChange}
           onSearchPrev={handleSearchPrev}
           onSearchNext={handleSearchNext}
-          windowCount={openWindows.length}
-          tabCount={tabs.length}
-          bookmarkCount={bookmarks.length}
           onCloseAllWindows={closeAllWindows}
-          showWindows={showWindows}
-        />
-      )}
-
-      {/* Tabs bar - shows when tabs exist OR when windows exist (for drop target) */}
-      {!isStandaloneMode && showHeader && (tabs.length > 0 || openWindows.length > 0) && (
-        <TabBar
           tabs={tabs}
           activeTabId={activeTabId}
           openWindowsCount={openWindows.length}
@@ -607,176 +585,103 @@ export default function Home() {
       )}
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Side column for TOC (top) and History (bottom) in main mode, shown only when needed */}
-        {showSidebar && (
-          <div
-            className="flex flex-col overflow-hidden shrink-0 border-r border-bg-tertiary bg-bg-secondary relative"
-            style={{ width: sidebarWidth, minWidth: 220, maxWidth: 600 }}
-          >
-            {/* Resize handle */}
-            <div
-              className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-accent/50 active:bg-accent z-10"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                const startX = e.clientX;
-                const startWidth = sidebarWidth;
-                const handleMouseMove = (moveEvent: MouseEvent) => {
-                  const newWidth = startWidth + (moveEvent.clientX - startX);
-                  setSidebarWidth(Math.max(220, Math.min(600, newWidth)));
-                };
-                const handleMouseUp = () => {
-                  document.removeEventListener('mousemove', handleMouseMove);
-                  document.removeEventListener('mouseup', handleMouseUp);
-                };
-                document.addEventListener('mousemove', handleMouseMove);
-                document.addEventListener('mouseup', handleMouseUp);
-              }}
-            />
-            {isTocOpen && (
-              <div className="flex-[2] min-h-[200px] max-h-[60vh] overflow-auto border-b border-bg-tertiary resize-y">
-                <TocSidebar
-                  toc={pdfInfo?.toc || []}
-                  currentPage={currentPage}
-                  isOpen={isTocOpen}
-                  onPageSelect={goToPage}
-                />
-              </div>
-            )}
-            {showWindows && (
-              <div className="flex-1 min-h-[100px] max-h-[40vh] overflow-auto border-b border-bg-tertiary resize-y">
-                <WindowSidebar
-                  windows={openWindows}
-                  currentPage={currentPage}
-                  onFocus={focusWindow}
-                  onClose={(label) => {
-                    closeWindow(label);
-                    setOpenWindows((prev) => prev.filter((w) => w.label !== label));
-                  }}
-                  onMoveToTab={(label, page) => moveWindowToTab(label, page)}
-                />
-              </div>
-            )}
-            {showHistory && (
-              <div className="flex-1 min-h-[100px] max-h-[40vh] overflow-auto border-b border-bg-tertiary resize-y">
-                <HistorySidebar
-                  history={pageHistory}
-                  index={historyIndex}
-                  currentPage={currentPage}
-                  onSelect={(p) => goToPage(p)}
-                  onClear={() => {
-                    setPageHistory([]);
-                    setHistoryIndex(-1);
-                  }}
-                />
-              </div>
-            )}
-            {showBookmarks && (
-              <div className="flex-1 min-h-[100px] max-h-[40vh] overflow-auto border-b border-bg-tertiary resize-y">
-                <BookmarkSidebar
-                  bookmarks={bookmarks}
-                  currentPage={currentPage}
-                  onSelect={(p) => goToPage(p)}
-                  onRemove={removeBookmark}
-                  onClear={clearBookmarks}
-                />
-              </div>
-            )}
-          </div>
-        )}
+        {/* Sidebar */}
+        <MainSidebar
+          showSidebar={showSidebar}
+          isTocOpen={isTocOpen}
+          showWindows={showWindows}
+          showHistory={showHistory}
+          showBookmarks={showBookmarks}
+          sidebarWidth={sidebarWidth}
+          setSidebarWidth={setSidebarWidth}
+          toc={pdfInfo?.toc || []}
+          currentPage={currentPage}
+          windows={openWindows}
+          onFocusWindow={focusWindow}
+          onCloseWindow={(label) => {
+            closeWindow(label);
+            setOpenWindows((prev) => prev.filter((w) => w.label !== label));
+          }}
+          onMoveWindowToTab={(label, page) => moveWindowToTab(label, page)}
+          history={pageHistory}
+          historyIndex={historyIndex}
+          onClearHistory={() => {
+            setPageHistory([]);
+            setHistoryIndex(-1);
+          }}
+          bookmarks={bookmarks}
+          onRemoveBookmark={removeBookmark}
+          onClearBookmarks={clearBookmarks}
+          goToPage={goToPage}
+        />
 
-        {/* Main viewer or Bookshelf */}
-        <div className="flex-1 min-w-0 relative flex flex-col" onContextMenu={handleContextMenu}>
-          {showBookshelf && !isStandaloneMode ? (
-            <BookshelfMainView
-              onOpenPdf={loadPdfFromPath}
-              currentFilePath={filePath}
-              onClose={() => setShowBookshelf(false)}
-            />
-          ) : (
-            <PdfViewer
-              fileData={fileData}
-              currentPage={currentPage}
-              totalPages={totalPages}
-              zoom={zoom}
-              viewMode={viewMode}
-              filePath={filePath}
-              searchQuery={searchQuery}
-              focusedSearchPage={searchResults[currentSearchIndex]?.page}
-              focusedSearchMatchIndex={searchResults[currentSearchIndex]?.matchIndex}
-              bookmarkedPages={bookmarks.map(b => b.page)}
-              onToggleBookmark={(page) => {
-                const existingIndex = bookmarks.findIndex((b) => b.page === page);
-                if (existingIndex >= 0) {
-                  setBookmarks((prev) => prev.filter((b) => b.page !== page));
-                } else {
-                  const chapter = getChapterForPage(page);
-                  const label = getTabLabel(page, chapter);
-                  setBookmarks((prev) => [...prev, { page, label, createdAt: Date.now() }]);
-                }
-              }}
-              onLoadSuccess={handleLoadSuccess}
-              onDocumentLoad={handlePdfDocumentLoad}
-              onNavigatePage={(page) => {
-                goToPage(page);
-              }}
-            />
-          )}
-        </div>
-
-        {/* Search results sidebar on the right */}
-        {showSearchResults && (
-          <SearchResultsSidebar
-            query={searchQuery}
-            results={searchResults}
-            currentIndex={currentSearchIndex}
-            isSearching={isSearching}
-            onSelect={(index) => {
-              setCurrentSearchIndex(index);
-              // Switch to single page mode only in standalone window
-              if (isStandaloneMode) {
-                setViewMode('single');
-              }
-              goToPage(searchResults[index].page);
-            }}
-            onOpenInWindow={(page) => openStandaloneWindow(page)}
-            onClose={() => {
-              setShowSearchResults(false);
-              setSearchQuery('');
-              setSearchResults([]);
-            }}
-          />
-        )}
+        {/* Viewer content */}
+        <ViewerContent
+          showBookshelf={showBookshelf}
+          isStandaloneMode={isStandaloneMode}
+          onOpenPdf={loadPdfFromPath}
+          currentFilePath={filePath}
+          onCloseBookshelf={() => setShowBookshelf(false)}
+          fileData={fileData}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          zoom={zoom}
+          viewMode={viewMode}
+          filePath={filePath}
+          searchQuery={searchQuery}
+          focusedSearchPage={searchResults[currentSearchIndex]?.page}
+          focusedSearchMatchIndex={searchResults[currentSearchIndex]?.matchIndex}
+          bookmarkedPages={bookmarks.map(b => b.page)}
+          onToggleBookmark={(page) => {
+            const existingIndex = bookmarks.findIndex((b) => b.page === page);
+            if (existingIndex >= 0) {
+              setBookmarks((prev) => prev.filter((b) => b.page !== page));
+            } else {
+              const chapter = getChapterForPage(page);
+              const label = getTabLabel(page, chapter);
+              setBookmarks((prev) => [...prev, { page, label, createdAt: Date.now() }]);
+            }
+          }}
+          onLoadSuccess={handleLoadSuccess}
+          onDocumentLoad={handlePdfDocumentLoad}
+          onNavigatePage={goToPage}
+          onContextMenu={handleContextMenu}
+          showSearchResults={showSearchResults}
+          searchResults={searchResults}
+          currentSearchIndex={currentSearchIndex}
+          isSearching={isSearching}
+          onSearchResultSelect={(index) => {
+            setCurrentSearchIndex(index);
+            if (isStandaloneMode) {
+              setViewMode('single');
+            }
+            goToPage(searchResults[index].page);
+          }}
+          onOpenInWindow={(page) => openStandaloneWindow(page)}
+          onCloseSearchResults={() => {
+            setShowSearchResults(false);
+            setSearchQuery('');
+            setSearchResults([]);
+          }}
+        />
       </div>
 
-      {/* Translation popup - don't show when settings modal is open */}
-      {selection && !showSettingsModal && (
-        <TranslationPopup
-          selection={selection}
-          autoExplain={autoExplain}
-          onClose={clearSelection}
-          onOpenSettings={() => setShowSettingsModal(true)}
-          viewMode={viewMode}
-          currentPage={currentPage}
-        />
-      )}
-
-      {/* Context menu */}
-      {contextMenuPosition && (
-        <ContextMenu
-          position={contextMenuPosition}
-          onCopy={handleContextMenuCopy}
-          onTranslate={handleContextMenuTranslate}
-          onExplain={handleContextMenuExplain}
-          onClose={closeContextMenu}
-        />
-      )}
-
-      {/* Settings modal */}
-      <Settings
-        isOpen={showSettingsModal}
+      {/* Overlay components (popups, modals, context menus) */}
+      <OverlayContainer
+        selection={selection}
+        autoExplain={autoExplain}
+        onClearSelection={clearSelection}
+        onOpenSettings={() => setShowSettingsModal(true)}
         viewMode={viewMode}
+        currentPage={currentPage}
+        contextMenuPosition={contextMenuPosition}
+        onContextMenuCopy={handleContextMenuCopy}
+        onContextMenuTranslate={handleContextMenuTranslate}
+        onContextMenuExplain={handleContextMenuExplain}
+        onCloseContextMenu={closeContextMenu}
+        showSettingsModal={showSettingsModal}
         onViewModeChange={setViewMode}
-        onClose={() => setShowSettingsModal(false)}
+        onCloseSettings={() => setShowSettingsModal(false)}
       />
     </main>
   );

@@ -2,14 +2,7 @@
 
 import type { HistoryEntry } from '@/types';
 import { useAutoScroll } from '@/hooks/useAutoScroll';
-
-interface HistorySidebarProps {
-  history: HistoryEntry[];
-  index: number;
-  currentPage: number;
-  onSelect: (page: number) => void;
-  onClear?: () => void;
-}
+import type { HistorySidebarProps } from '@/types/components';
 
 export default function HistorySidebar({ history, index, currentPage, onSelect, onClear }: HistorySidebarProps) {
   const activeItemRef = useAutoScroll<HTMLLIElement>([currentPage, index]);

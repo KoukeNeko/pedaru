@@ -2,14 +2,7 @@
 
 import type { OpenWindow } from '@/types';
 import { useAutoScroll } from '@/hooks/useAutoScroll';
-
-interface WindowSidebarProps {
-  windows: OpenWindow[];
-  currentPage: number;
-  onFocus: (label: string) => Promise<void> | void;
-  onClose: (label: string) => void;
-  onMoveToTab: (label: string, page: number) => void;
-}
+import type { WindowSidebarProps } from '@/types/components';
 
 export default function WindowSidebar({ windows, currentPage, onFocus, onClose, onMoveToTab }: WindowSidebarProps) {
   const activeItemRef = useAutoScroll<HTMLLIElement>([currentPage]);
