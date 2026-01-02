@@ -97,7 +97,7 @@ Session saves are debounced (500ms) to avoid excessive database writes. The sess
 
 ### Component Structure
 
-**Main Application Logic** - `src/app/page.tsx` (~2000 lines):
+**Main Application Logic** - `src/app/page.tsx` (~700 lines):
 - All state management (page, zoom, bookmarks, history, tabs, windows)
 - Event handlers for keyboard shortcuts and menu events
 - Session persistence with auto-save
@@ -112,6 +112,10 @@ Session saves are debounced (500ms) to avoid excessive database writes. The sess
 - `BookshelfSidebar.tsx` - Google Drive bookshelf
 - `WindowSidebar.tsx` - Standalone window list
 - `SearchResultsSidebar.tsx` - Full-text search results
+- `MainSidebar.tsx` - Main sidebar container with resize
+- `MainWindowHeader.tsx` - Header and tab bar combination
+- `ViewerContent.tsx` - PDF viewer and bookshelf content
+- `OverlayContainer.tsx` - Popups, modals, and context menus
 - `CustomTextLayer.tsx` - Custom text layer for PDF.js
 - `TranslationPopup.tsx` - Gemini translation popup
 - `Settings.tsx` - View mode and Gemini settings panel
@@ -132,8 +136,14 @@ Session saves are debounced (500ms) to avoid excessive database writes. The sess
 **Utility Libraries** - `src/lib/`:
 - `database.ts` - SQLite-based session persistence using tauri-plugin-sql
 - `pdfUtils.ts` - PDF-specific utilities (chapter extraction, etc.)
+- `formatUtils.ts` - Label and title formatting utilities
 - `tabManager.ts` - Tab state management utilities
 - `settings.ts` - Gemini API settings management
+
+**Type Definitions** - `src/types/`:
+- `index.ts` - Core types (ViewMode, Bookmark, Tab, etc.)
+- `components.ts` - Component Props interfaces (17 interfaces)
+- `pdf.ts` - PDF-related types (PdfInfo, TocEntry)
 
 ### PDF Processing (Rust Backend)
 
@@ -151,14 +161,24 @@ When working with PDF metadata or TOC parsing, be aware of encoding issues, espe
 
 The SQLite database is initialized in `src-tauri/src/lib.rs` using `tauri-plugin-sql`:
 
-**Schema Definition:** `src-tauri/src/db_schema.rs`
-- `get_migrations()` - Returns database migrations with inline SQL
-- Version 1: Creates `sessions` table with indexes
+**Schema Definition:**
+- `src-tauri/src/db_schema.rs` - Migration loader using `include_str!`
+- `src-tauri/src/migrations/001_initial_schema.sql` - Consolidated initial schema
+
+**Tables:**
+- `sessions` - Per-PDF session state (page, zoom, view mode, etc.)
+- `session_bookmarks` - Normalized bookmarks (FK to sessions)
+- `session_tabs` - Normalized tabs (FK to sessions)
+- `session_page_history` - Normalized page history (FK to sessions)
+- `settings` - Application configuration (key-value store)
+- `drive_folders` - Google Drive folder configuration
+- `bookshelf_cloud` - PDFs from Google Drive
+- `bookshelf_local` - Locally imported PDFs
 
 **Key Features:**
-- Automatic migration on app startup
-- JSON fields for complex data (tabs, windows, bookmarks, history)
-- Indexed queries on file_path and path_hash for fast lookups
+- Automatic migration on app startup via `tauri-plugin-sql`
+- JSON fields for backward compatibility (tabs, windows, bookmarks in sessions)
+- Indexed queries on file_path for fast lookups
 - LRU cleanup keeps only 50 most recent sessions
 
 **Database Operations:**
@@ -356,10 +376,9 @@ Note: Relative paths don't work. File associations only work with built apps, no
 
 GitHub Actions workflow (`.github/workflows/ci.yml`) runs:
 1. **test-rust** - Cargo tests, clippy, rustfmt
-2. **test-frontend** - TypeScript checks, Next.js build
-3. **build-tauri** - Matrix builds for macOS, Ubuntu, Windows
+2. **test-frontend** - TypeScript checks, Vitest tests, Next.js build
 
-All three must pass before merge. Build artifacts are created in `src-tauri/target/release/bundle/`.
+Both must pass before merge. Build artifacts are created locally via `npm run tauri build`.
 
 ## Important Notes
 
