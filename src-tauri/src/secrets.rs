@@ -77,9 +77,9 @@ fn save_secrets_to_keychain(secrets: &HashMap<String, String>) -> Result<(), Ped
         let json = serde_json::to_string(&all_secrets)
             .map_err(|e| PedaruError::Secrets(format!("Failed to serialize secrets: {}", e)))?;
 
-        entry
-            .set_password(&json)
-            .map_err(|e| PedaruError::Secrets(format!("Failed to save secrets to keychain: {}", e)))?;
+        entry.set_password(&json).map_err(|e| {
+            PedaruError::Secrets(format!("Failed to save secrets to keychain: {}", e))
+        })?;
 
         Ok(())
     }

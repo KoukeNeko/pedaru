@@ -690,7 +690,7 @@ export default function Home() {
             className="flex flex-col overflow-hidden shrink-0 border-r border-bg-tertiary bg-bg-secondary"
             style={{ width: sidebarWidth, minWidth: 280, maxWidth: 600 }}
           >
-            <BookshelfSidebar onOpenPdf={loadPdfFromPath} />
+            <BookshelfSidebar onOpenPdf={loadPdfFromPath} currentFilePath={filePath} />
           </div>
         )}
 

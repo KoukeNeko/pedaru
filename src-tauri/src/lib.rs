@@ -330,6 +330,12 @@ fn delete_local_copy(app: tauri::AppHandle, drive_file_id: String) -> Result<(),
     bookshelf::delete_local_copy(&app, &drive_file_id).map_err(|e| e.into_tauri_error())
 }
 
+/// Reset download status without deleting the file (for missing files)
+#[tauri::command(rename_all = "camelCase")]
+fn reset_download_status(app: tauri::AppHandle, drive_file_id: String) -> Result<(), String> {
+    bookshelf::reset_download_status(&app, &drive_file_id).map_err(|e| e.into_tauri_error())
+}
+
 /// Update bookshelf item thumbnail
 #[tauri::command(rename_all = "camelCase")]
 fn update_bookshelf_thumbnail(
@@ -461,6 +467,7 @@ pub fn run() {
             get_bookshelf_items,
             download_bookshelf_item,
             delete_local_copy,
+            reset_download_status,
             update_bookshelf_thumbnail,
             cancel_bookshelf_download,
             // Gemini translation commands

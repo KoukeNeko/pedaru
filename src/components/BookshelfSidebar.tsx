@@ -24,12 +24,13 @@ import type { BookshelfItem as BookshelfItemType, DriveFolder } from '@/types';
 
 interface BookshelfSidebarProps {
   onOpenPdf: (localPath: string) => void;
+  currentFilePath?: string | null;
 }
 
 /**
  * Bookshelf sidebar component for managing Google Drive PDFs
  */
-export default function BookshelfSidebar({ onOpenPdf }: BookshelfSidebarProps) {
+export default function BookshelfSidebar({ onOpenPdf, currentFilePath }: BookshelfSidebarProps) {
   const {
     authStatus,
     isLoading: authLoading,
@@ -52,6 +53,7 @@ export default function BookshelfSidebar({ onOpenPdf }: BookshelfSidebarProps) {
     downloadItem,
     cancelDownload,
     deleteLocalCopy,
+    resetDownloadStatus,
     updateThumbnail,
     getItemsNeedingThumbnails,
   } = useBookshelf();
@@ -145,11 +147,33 @@ export default function BookshelfSidebar({ onOpenPdf }: BookshelfSidebarProps) {
     }
   }, [folderPath, addSyncFolder]);
 
-  const handleOpenPdf = useCallback((item: BookshelfItemType) => {
+  const handleOpenPdf = useCallback(async (item: BookshelfItemType) => {
     if (item.localPath) {
-      onOpenPdf(item.localPath);
+      // Skip if already open
+      if (currentFilePath === item.localPath) {
+        console.log('File already open, skipping reload');
+        return;
+      }
+
+      try {
+        // Check if file exists before trying to open
+        const { exists } = await import('@tauri-apps/plugin-fs');
+        const fileExists = await exists(item.localPath);
+
+        if (!fileExists) {
+          // File is missing - reset the item status (without deleting file)
+          console.error('File missing, resetting status:', item.localPath);
+          await resetDownloadStatus(item.driveFileId);
+          return;
+        }
+
+        onOpenPdf(item.localPath);
+      } catch (error) {
+        console.error('Error checking file:', error);
+        // Don't reset status on error - file might still exist
+      }
     }
-  }, [onOpenPdf]);
+  }, [onOpenPdf, resetDownloadStatus, currentFilePath]);
 
   const handleDownload = useCallback(async (item: BookshelfItemType) => {
     await downloadItem(item);

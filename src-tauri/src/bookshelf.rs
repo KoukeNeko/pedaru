@@ -319,7 +319,7 @@ pub fn update_pdf_title(
     Ok(())
 }
 
-/// Delete local copy of a bookshelf item
+/// Delete local copy of a bookshelf item (deletes file and resets database)
 pub fn delete_local_copy(app: &AppHandle, drive_file_id: &str) -> Result<(), PedaruError> {
     let conn = open_db(app)?;
 
@@ -352,6 +352,26 @@ pub fn delete_local_copy(app: &AppHandle, drive_file_id: &str) -> Result<(), Ped
            local_path = NULL,
            download_status = 'pending',
            download_progress = 0,
+           updated_at = ?1
+         WHERE drive_file_id = ?2",
+        rusqlite::params![now_timestamp(), drive_file_id],
+    )
+    .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+
+    Ok(())
+}
+
+/// Reset download status without deleting the file
+/// Used when file is known to be missing
+pub fn reset_download_status(app: &AppHandle, drive_file_id: &str) -> Result<(), PedaruError> {
+    let conn = open_db(app)?;
+
+    conn.execute(
+        "UPDATE bookshelf SET
+           local_path = NULL,
+           download_status = 'pending',
+           download_progress = 0,
+           thumbnail_data = NULL,
            updated_at = ?1
          WHERE drive_file_id = ?2",
         rusqlite::params![now_timestamp(), drive_file_id],
@@ -396,10 +416,7 @@ pub fn verify_local_files(app: &AppHandle) -> Result<i32, PedaruError> {
     for (drive_file_id, local_path) in items {
         let path = std::path::Path::new(&local_path);
         if !path.exists() {
-            eprintln!(
-                "[Pedaru] File missing, resetting status: {}",
-                local_path
-            );
+            eprintln!("[Pedaru] File missing, resetting status: {}", local_path);
             conn.execute(
                 "UPDATE bookshelf SET
                    download_status = 'pending',

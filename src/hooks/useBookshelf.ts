@@ -187,7 +187,7 @@ export function useBookshelf() {
   }, []);
 
   /**
-   * Delete local copy of a bookshelf item
+   * Delete local copy of a bookshelf item (deletes file from disk)
    */
   const deleteLocalCopy = useCallback(async (driveFileId: string): Promise<boolean> => {
     try {
@@ -206,6 +206,29 @@ export function useBookshelf() {
     } catch (err) {
       console.error('Failed to delete local copy:', err);
       setError(String(err));
+      return false;
+    }
+  }, []);
+
+  /**
+   * Reset download status without deleting the file (for missing files)
+   */
+  const resetDownloadStatus = useCallback(async (driveFileId: string): Promise<boolean> => {
+    try {
+      await invoke('reset_download_status', { driveFileId });
+
+      // Update local state
+      setItems((prevItems) =>
+        prevItems.map((item) =>
+          item.driveFileId === driveFileId
+            ? { ...item, downloadStatus: 'pending' as const, downloadProgress: 0, localPath: undefined, thumbnailData: undefined }
+            : item
+        )
+      );
+
+      return true;
+    } catch (err) {
+      console.error('Failed to reset download status:', err);
       return false;
     }
   }, []);
@@ -269,6 +292,7 @@ export function useBookshelf() {
     downloadItem,
     cancelDownload,
     deleteLocalCopy,
+    resetDownloadStatus,
     updateThumbnail,
 
     // Getters
