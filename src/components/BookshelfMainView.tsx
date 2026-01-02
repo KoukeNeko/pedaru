@@ -670,35 +670,33 @@ export default function BookshelfMainView({ onOpenPdf, currentFilePath, onClose 
                     </button>
                   </div>
                   {syncedFolders.length === 0 ? (
-                    <p className="text-text-tertiary">No synced folders</p>
+                    <p className="text-text-tertiary mb-4">No synced folders</p>
                   ) : (
-                    <>
-                      <ul className="space-y-2">
-                        {syncedFolders.map((folder, index) => (
-                          <li
-                            key={folder.folderId || `synced-${index}`}
-                            className="flex items-center justify-between py-2 px-3 bg-bg-tertiary rounded"
+                    <ul className="space-y-2 mb-4">
+                      {syncedFolders.map((folder, index) => (
+                        <li
+                          key={folder.folderId || `synced-${index}`}
+                          className="flex items-center justify-between py-2 px-3 bg-bg-tertiary rounded"
+                        >
+                          <span className="text-text-primary truncate">{folder.folderName}</span>
+                          <button
+                            onClick={() => removeSyncFolder(folder.folderId)}
+                            className="text-text-tertiary hover:text-red-400"
                           >
-                            <span className="text-text-primary truncate">{folder.folderName}</span>
-                            <button
-                              onClick={() => removeSyncFolder(folder.folderId)}
-                              className="text-text-tertiary hover:text-red-400"
-                            >
-                              <X className="w-5 h-5" />
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                      <button
-                        onClick={handleSync}
-                        disabled={isSyncing}
-                        className="w-full mt-4 px-4 py-2 bg-accent text-white rounded font-medium hover:bg-accent/80 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                      >
-                        <RefreshCw className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />
-                        {isSyncing ? 'Syncing...' : 'Sync Now'}
-                      </button>
-                    </>
+                            <X className="w-5 h-5" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
                   )}
+                  <button
+                    onClick={handleSync}
+                    disabled={isSyncing}
+                    className="w-full px-4 py-2 bg-accent text-white rounded font-medium hover:bg-accent/80 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />
+                    {isSyncing ? 'Syncing...' : 'Sync Now'}
+                  </button>
                 </div>
               )}
             </div>
