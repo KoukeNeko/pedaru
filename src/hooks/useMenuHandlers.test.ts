@@ -63,6 +63,7 @@ describe('useMenuHandlers', () => {
   const mockHandleZoomReset = vi.fn();
   const mockHandleToggleHeader = vi.fn();
   const mockSetViewMode = vi.fn();
+  const mockHandleOpenSettings = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -94,7 +95,8 @@ describe('useMenuHandlers', () => {
           mockHandleZoomOut,
           mockHandleZoomReset,
           mockHandleToggleHeader,
-          mockSetViewMode
+          mockSetViewMode,
+          mockHandleOpenSettings
         )
       );
     }).not.toThrow();
@@ -114,7 +116,8 @@ describe('useMenuHandlers', () => {
         mockHandleZoomOut,
         mockHandleZoomReset,
         mockHandleToggleHeader,
-        mockSetViewMode
+        mockSetViewMode,
+        mockHandleOpenSettings
       )
     );
 
@@ -136,7 +139,8 @@ describe('useMenuHandlers', () => {
         mockHandleZoomOut,
         mockHandleZoomReset,
         mockHandleToggleHeader,
-        mockSetViewMode
+        mockSetViewMode,
+        mockHandleOpenSettings
       )
     );
 
@@ -171,7 +175,8 @@ describe('useMenuHandlers', () => {
         mockHandleZoomOut,
         mockHandleZoomReset,
         mockHandleToggleHeader,
-        mockSetViewMode
+        mockSetViewMode,
+        mockHandleOpenSettings
       )
     );
 
@@ -205,7 +210,8 @@ describe('useMenuHandlers', () => {
         mockHandleZoomOut,
         mockHandleZoomReset,
         mockHandleToggleHeader,
-        mockSetViewMode
+        mockSetViewMode,
+        mockHandleOpenSettings
       )
     );
 

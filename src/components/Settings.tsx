@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { X, Monitor, Columns, Eye, EyeOff, Loader2, Check, Cloud, LogIn, LogOut } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-shell';
 import type { ViewMode, GeminiSettings, AuthStatus } from '@/types';
 import { getGeminiSettings, saveGeminiSettings, DEFAULT_GEMINI_SETTINGS, GEMINI_MODELS } from '@/lib/settings';
 
@@ -42,6 +43,7 @@ export default function Settings({
     if (isOpen) {
       loadSettings();
       loadAuthStatus();
+      loadOAuthCredentials();
     }
   }, [isOpen]);
 
@@ -56,6 +58,18 @@ export default function Settings({
       setAuthStatus(status);
     } catch (error) {
       console.error('Failed to get auth status:', error);
+    }
+  };
+
+  const loadOAuthCredentials = async () => {
+    try {
+      const credentials = await invoke<{ client_id: string; client_secret: string } | null>('get_oauth_credentials');
+      if (credentials) {
+        setClientId(credentials.client_id);
+        setClientSecret(credentials.client_secret);
+      }
+    } catch (error) {
+      console.error('Failed to get OAuth credentials:', error);
     }
   };
 
@@ -79,11 +93,33 @@ export default function Settings({
   const handleGoogleAuth = async () => {
     setIsAuthLoading(true);
     try {
-      await invoke<string>('start_google_auth');
-      await loadAuthStatus();
+      const authUrl = await invoke<string>('start_google_auth');
+      await open(authUrl);
+
+      // Poll for auth completion
+      const maxAttempts = 150;
+      let attempts = 0;
+
+      const pollInterval = setInterval(async () => {
+        attempts++;
+        try {
+          const status = await invoke<AuthStatus>('get_google_auth_status');
+          if (status.authenticated) {
+            clearInterval(pollInterval);
+            setAuthStatus(status);
+            setIsAuthLoading(false);
+          }
+        } catch {
+          // Ignore polling errors
+        }
+
+        if (attempts >= maxAttempts) {
+          clearInterval(pollInterval);
+          setIsAuthLoading(false);
+        }
+      }, 2000);
     } catch (error) {
       console.error('Failed to authenticate:', error);
-    } finally {
       setIsAuthLoading(false);
     }
   };

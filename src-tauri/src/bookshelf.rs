@@ -371,3 +371,53 @@ pub fn reset_stale_downloads(app: &AppHandle) -> Result<(), PedaruError> {
     .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
     Ok(())
 }
+
+/// Verify that local files exist for completed downloads
+/// Resets status to "pending" for items where the file no longer exists
+pub fn verify_local_files(app: &AppHandle) -> Result<i32, PedaruError> {
+    let conn = open_db(app)?;
+
+    // Get all completed downloads with local paths
+    let mut stmt = conn
+        .prepare(
+            "SELECT drive_file_id, local_path FROM bookshelf
+             WHERE download_status = 'completed' AND local_path IS NOT NULL",
+        )
+        .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+
+    let items: Vec<(String, String)> = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let mut reset_count = 0;
+
+    for (drive_file_id, local_path) in items {
+        let path = std::path::Path::new(&local_path);
+        if !path.exists() {
+            eprintln!(
+                "[Pedaru] File missing, resetting status: {}",
+                local_path
+            );
+            conn.execute(
+                "UPDATE bookshelf SET
+                   download_status = 'pending',
+                   download_progress = 0,
+                   local_path = NULL,
+                   thumbnail_data = NULL,
+                   updated_at = ?1
+                 WHERE drive_file_id = ?2",
+                rusqlite::params![now_timestamp(), drive_file_id],
+            )
+            .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+            reset_count += 1;
+        }
+    }
+
+    if reset_count > 0 {
+        eprintln!("[Pedaru] Reset {} items with missing files", reset_count);
+    }
+
+    Ok(reset_count)
+}

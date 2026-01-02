@@ -15,6 +15,9 @@ export async function generateThumbnail(pdfData: Uint8Array): Promise<string> {
   // Dynamic import to avoid SSR issues with pdfjs-dist
   const { pdfjs } = await import('react-pdf');
 
+  // Set up PDF.js worker from CDN
+  pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+
   // Load the PDF document
   const pdf = await pdfjs.getDocument({ data: pdfData }).promise;
 

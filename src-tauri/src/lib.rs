@@ -154,6 +154,12 @@ fn save_oauth_credentials(
     .map_err(|e| e.into_tauri_error())
 }
 
+/// Get OAuth credentials
+#[tauri::command]
+fn get_oauth_credentials(app: tauri::AppHandle) -> Result<Option<oauth::OAuthCredentials>, String> {
+    oauth::load_credentials(&app).map_err(|e| e.into_tauri_error())
+}
+
 /// Start Google OAuth flow
 #[tauri::command]
 fn start_google_auth(app: tauri::AppHandle) -> Result<String, String> {
@@ -247,6 +253,10 @@ async fn sync_bookshelf(app: tauri::AppHandle) -> Result<bookshelf::SyncResult, 
 /// Get all bookshelf items
 #[tauri::command]
 fn get_bookshelf_items(app: tauri::AppHandle) -> Result<Vec<bookshelf::BookshelfItem>, String> {
+    // Verify local files exist before returning items
+    // This resets status for items where files are missing
+    let _ = bookshelf::verify_local_files(&app);
+
     bookshelf::get_items(&app).map_err(|e| e.into_tauri_error())
 }
 
@@ -439,6 +449,7 @@ pub fn run() {
             refresh_recent_menu,
             // Google Drive / OAuth commands
             save_oauth_credentials,
+            get_oauth_credentials,
             start_google_auth,
             get_google_auth_status,
             logout_google,
