@@ -59,6 +59,7 @@ export default function BookshelfSidebar({ onOpenPdf, currentFilePath }: Bookshe
     updateThumbnail,
     updateLocalThumbnail,
     getItemsNeedingThumbnails,
+    deleteItem,
   } = useBookshelf();
 
   const [showSettings, setShowSettings] = useState(false);
@@ -175,9 +176,14 @@ export default function BookshelfSidebar({ onOpenPdf, currentFilePath }: Bookshe
         const fileExists = await exists(item.localPath);
 
         if (!fileExists) {
-          // File is missing - reset the item status (without deleting file)
-          console.error('File missing, resetting status:', item.localPath);
-          await resetDownloadStatus(item.driveFileId || '');
+          console.error('File missing:', item.localPath);
+          if (item.driveFileId) {
+            // Cloud item: reset download status so it can be re-downloaded
+            await resetDownloadStatus(item.driveFileId);
+          } else {
+            // Local item: remove from bookshelf since file no longer exists
+            await deleteItem(item.id);
+          }
           return;
         }
 
@@ -187,7 +193,7 @@ export default function BookshelfSidebar({ onOpenPdf, currentFilePath }: Bookshe
         // Don't reset status on error - file might still exist
       }
     }
-  }, [onOpenPdf, resetDownloadStatus, currentFilePath]);
+  }, [onOpenPdf, resetDownloadStatus, deleteItem, currentFilePath]);
 
   const handleDownload = useCallback(async (item: BookshelfItemType) => {
     // Check auth status first if it's a cloud item (triggers Keychain access)
