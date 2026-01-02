@@ -117,7 +117,7 @@ pub async fn list_folders(
     Ok(folder_list.files)
 }
 
-/// List both folders and PDF files in a parent folder
+/// List both folders and PDF files in a parent folder (handles pagination)
 pub async fn list_drive_items(
     app: &AppHandle,
     parent_id: Option<&str>,
@@ -132,27 +132,7 @@ pub async fn list_drive_items(
         parent
     );
 
-    let response = client
-        .get(format!("{}/files", DRIVE_API_BASE))
-        .bearer_auth(&access_token)
-        .query(&[
-            ("q", query.as_str()),
-            ("fields", "files(id,name,size,mimeType,modifiedTime,thumbnailLink)"),
-            ("orderBy", "folder,name"),
-            ("pageSize", "100"),
-        ])
-        .send()
-        .await
-        .map_err(|e| PedaruError::GoogleDrive(GoogleDriveError::ApiRequestFailed(e.to_string())))?;
-
-    if !response.status().is_success() {
-        let error_text = response.text().await.unwrap_or_default();
-        return Err(PedaruError::GoogleDrive(GoogleDriveError::ListFilesFailed(
-            error_text,
-        )));
-    }
-
-    // Parse raw response first
+    // Parse raw response
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct RawItem {
@@ -165,31 +145,71 @@ pub async fn list_drive_items(
     }
 
     #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
     struct RawListResponse {
         files: Vec<RawItem>,
+        next_page_token: Option<String>,
     }
 
-    let raw_response: RawListResponse = response
-        .json()
-        .await
-        .map_err(|e| PedaruError::GoogleDrive(GoogleDriveError::ApiRequestFailed(e.to_string())))?;
+    let mut all_items = Vec::new();
+    let mut page_token: Option<String> = None;
 
-    // Convert to DriveItem with is_folder flag
-    let items: Vec<DriveItem> = raw_response
-        .files
-        .into_iter()
-        .map(|item| DriveItem {
-            id: item.id,
-            name: item.name,
-            size: item.size,
-            is_folder: item.mime_type == "application/vnd.google-apps.folder",
-            mime_type: item.mime_type,
-            modified_time: item.modified_time,
-            thumbnail_link: item.thumbnail_link,
-        })
-        .collect();
+    loop {
+        let mut request = client
+            .get(format!("{}/files", DRIVE_API_BASE))
+            .bearer_auth(&access_token)
+            .query(&[
+                ("q", query.as_str()),
+                ("fields", "files(id,name,size,mimeType,modifiedTime,thumbnailLink),nextPageToken"),
+                ("orderBy", "folder,name"),
+                ("pageSize", "100"),
+            ]);
 
-    Ok(items)
+        if let Some(token) = &page_token {
+            request = request.query(&[("pageToken", token.as_str())]);
+        }
+
+        let response = request
+            .send()
+            .await
+            .map_err(|e| PedaruError::GoogleDrive(GoogleDriveError::ApiRequestFailed(e.to_string())))?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(PedaruError::GoogleDrive(GoogleDriveError::ListFilesFailed(
+                error_text,
+            )));
+        }
+
+        let raw_response: RawListResponse = response
+            .json()
+            .await
+            .map_err(|e| PedaruError::GoogleDrive(GoogleDriveError::ApiRequestFailed(e.to_string())))?;
+
+        // Convert to DriveItem with is_folder flag
+        let items: Vec<DriveItem> = raw_response
+            .files
+            .into_iter()
+            .map(|item| DriveItem {
+                id: item.id,
+                name: item.name,
+                size: item.size,
+                is_folder: item.mime_type == "application/vnd.google-apps.folder",
+                mime_type: item.mime_type,
+                modified_time: item.modified_time,
+                thumbnail_link: item.thumbnail_link,
+            })
+            .collect();
+
+        all_items.extend(items);
+
+        match raw_response.next_page_token {
+            Some(token) => page_token = Some(token),
+            None => break,
+        }
+    }
+
+    Ok(all_items)
 }
 
 /// List PDF files in a folder (handles pagination)
