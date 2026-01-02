@@ -1,9 +1,23 @@
 # <img src="./app-icon.png" alt="Pedaru Icon" height="32" align="center"/> Pedaru
 
-AI-enhanced PDF reader with Gemini translation
+A cross-platform desktop PDF reader with Gemini translation
 
 ![Pedaru PDF Viewer](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux-blue)
 ![License](https://img.shields.io/badge/License-Apache%202.0-blue)
+
+## How to install
+
+```bash
+git clone https://github.com/togatoga/pedaru.git
+cd pedaru
+npm install
+npm run tauri build
+```
+
+Build outputs:
+- **macOS**: `src-tauri/target/release/bundle/macos/Pedaru.app` and `.dmg`
+- **Linux**: `src-tauri/target/release/bundle/deb/*.deb` and `appimage/*.AppImage`
+- **Windows**: `src-tauri/target/release/bundle/msi/*.msi`
 
 ## Features
 
