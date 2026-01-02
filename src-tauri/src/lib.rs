@@ -299,18 +299,8 @@ async fn download_bookshelf_item(
             )
             .map_err(|e| e.into_tauri_error())?;
 
-            // Try to extract PDF metadata (title and author)
-            if let Ok(pdf_info) = get_pdf_info(path_str.clone()) {
-                let title = pdf_info.title.as_ref()
-                    .filter(|t| !t.trim().is_empty())
-                    .map(|s| s.as_str());
-                let author = pdf_info.author.as_ref()
-                    .filter(|a| !a.trim().is_empty())
-                    .map(|s| s.as_str());
-                if title.is_some() || author.is_some() {
-                    let _ = bookshelf::update_pdf_metadata(&app, &drive_file_id, title, author);
-                }
-            }
+            // Extract and save PDF metadata (title and author)
+            let _ = bookshelf::extract_and_save_pdf_metadata(&app, &path_str, &drive_file_id);
 
             Ok(path_str)
         }
@@ -360,7 +350,10 @@ fn cancel_bookshelf_download(drive_file_id: String) -> Result<bool, String> {
 
 /// Import local PDF files to bookshelf
 #[tauri::command]
-fn import_local_files(app: tauri::AppHandle, paths: Vec<String>) -> Result<bookshelf::ImportResult, String> {
+fn import_local_files(
+    app: tauri::AppHandle,
+    paths: Vec<String>,
+) -> Result<bookshelf::ImportResult, String> {
     let mut imported_count = 0;
     let mut skipped_count = 0;
     let mut error_count = 0;
@@ -369,22 +362,13 @@ fn import_local_files(app: tauri::AppHandle, paths: Vec<String>) -> Result<books
         match bookshelf::import_local_file(&app, &path) {
             Ok(item) => {
                 imported_count += 1;
-                // Try to extract PDF metadata
-                if let Ok(pdf_info) = get_pdf_info(item.local_path.clone().unwrap_or_default()) {
-                    let title = pdf_info.title.as_ref()
-                        .filter(|t| !t.trim().is_empty())
-                        .map(|s| s.as_str());
-                    let author = pdf_info.author.as_ref()
-                        .filter(|a| !a.trim().is_empty())
-                        .map(|s| s.as_str());
-                    if title.is_some() || author.is_some() {
-                        let _ = bookshelf::update_pdf_metadata(
-                            &app,
-                            item.drive_file_id.as_deref().unwrap_or(""),
-                            title,
-                            author
-                        );
-                    }
+                // Extract and save PDF metadata
+                if let Some(local_path) = &item.local_path {
+                    let _ = bookshelf::extract_and_save_pdf_metadata(
+                        &app,
+                        local_path,
+                        item.drive_file_id.as_deref().unwrap_or(""),
+                    );
                 }
             }
             Err(e) => {
@@ -408,31 +392,27 @@ fn import_local_files(app: tauri::AppHandle, paths: Vec<String>) -> Result<books
 
 /// Import all PDFs from a local directory to bookshelf
 #[tauri::command(rename_all = "camelCase")]
-fn import_local_directory(app: tauri::AppHandle, dir_path: String) -> Result<bookshelf::ImportResult, String> {
-    let result = bookshelf::import_local_directory(&app, &dir_path).map_err(|e| e.into_tauri_error())?;
+fn import_local_directory(
+    app: tauri::AppHandle,
+    dir_path: String,
+) -> Result<bookshelf::ImportResult, String> {
+    let result =
+        bookshelf::import_local_directory(&app, &dir_path).map_err(|e| e.into_tauri_error())?;
 
     // Extract metadata for newly imported files
     if result.imported_count > 0 {
         // Get all local items and update their metadata
         if let Ok(items) = bookshelf::get_items(&app) {
-            for item in items.iter().filter(|i| i.source_type == "local" && i.pdf_title.is_none()) {
+            for item in items
+                .iter()
+                .filter(|i| i.source_type == "local" && i.pdf_title.is_none())
+            {
                 if let Some(local_path) = &item.local_path {
-                    if let Ok(pdf_info) = get_pdf_info(local_path.clone()) {
-                        let title = pdf_info.title.as_ref()
-                            .filter(|t| !t.trim().is_empty())
-                            .map(|s| s.as_str());
-                        let author = pdf_info.author.as_ref()
-                            .filter(|a| !a.trim().is_empty())
-                            .map(|s| s.as_str());
-                        if title.is_some() || author.is_some() {
-                            let _ = bookshelf::update_pdf_metadata(
-                                &app,
-                                item.drive_file_id.as_deref().unwrap_or(""),
-                                title,
-                                author
-                            );
-                        }
-                    }
+                    let _ = bookshelf::extract_and_save_pdf_metadata(
+                        &app,
+                        local_path,
+                        item.drive_file_id.as_deref().unwrap_or(""),
+                    );
                 }
             }
         }
@@ -516,6 +496,138 @@ async fn explain_translation(
     .await
     .map_err(|e| e.into_tauri_error())
 }
+
+// ============================================================================
+// Event Handlers
+// ============================================================================
+
+/// Handle menu events from the application menu
+fn handle_menu_event(app: &tauri::AppHandle, event_id: &str) {
+    match event_id {
+        "reset_all_data" => {
+            app.emit("reset-all-data-requested", ()).ok();
+        }
+        "export_session_data" => {
+            app.emit("export-session-data-requested", ()).ok();
+        }
+        "import_session_data" => {
+            app.emit("import-session-data-requested", ()).ok();
+        }
+        "open_file" => {
+            app.emit("menu-open-file-requested", ()).ok();
+        }
+        id if id.starts_with("open-recent-") => {
+            if let Some(file_path) = decode_file_path_from_menu_id(id) {
+                app.emit("menu-open-recent-selected", file_path).ok();
+            }
+        }
+        "zoom_in" => {
+            app.emit("menu-zoom-in", ()).ok();
+        }
+        "zoom_out" => {
+            app.emit("menu-zoom-out", ()).ok();
+        }
+        "zoom_reset" => {
+            app.emit("menu-zoom-reset", ()).ok();
+        }
+        "toggle_two_column" => {
+            app.emit("menu-toggle-two-column", ()).ok();
+        }
+        "toggle_header" => {
+            app.emit("menu-toggle-header", ()).ok();
+        }
+        "open_settings" => {
+            app.emit("menu-open-settings", ()).ok();
+        }
+        _ => {}
+    }
+}
+
+/// Handle macOS file open events (when a PDF is opened while app is running)
+#[cfg(target_os = "macos")]
+fn handle_opened_event(app: &tauri::AppHandle, urls: &[tauri::Url]) {
+    eprintln!("[Pedaru] Received Opened event with {} urls", urls.len());
+
+    for url in urls {
+        eprintln!("[Pedaru] URL: {:?}", url);
+        if let Ok(path) = url.to_file_path() {
+            let path_str: String = path.to_string_lossy().to_string();
+            eprintln!("[Pedaru] File path: {}", path_str);
+            if path_str.to_lowercase().ends_with(".pdf") {
+                // Check if this is the initial startup (OPENED_VIA_EVENT is false)
+                // If so, store in PENDING_FILE for main window to load
+                // If app is already running, create a new window
+                let was_already_opened = OPENED_VIA_EVENT.swap(true, Ordering::SeqCst);
+
+                if !was_already_opened {
+                    // First file open during startup - let main window handle it
+                    eprintln!(
+                        "[Pedaru] Initial startup, storing in PENDING_FILE: {}",
+                        path_str
+                    );
+                    let pending = get_pending_file();
+                    *pending
+                        .lock()
+                        .expect("PENDING_FILE mutex poisoned - previous thread panicked") =
+                        Some(path_str);
+                } else {
+                    // App is already running - create a new independent window
+                    let encoded_path = urlencoding::encode(&path_str).into_owned();
+                    let window_url = format!("/?openFile={}", encoded_path);
+                    let window_label = format!(
+                        "pdf-{}",
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis()
+                    );
+
+                    eprintln!(
+                        "[Pedaru] Creating new window: {} with URL: {}",
+                        window_label, window_url
+                    );
+
+                    let file_name = path
+                        .file_name()
+                        .map(|n: &std::ffi::OsStr| n.to_string_lossy().to_string())
+                        .unwrap_or_else(|| "PDF".to_string());
+
+                    if let Err(e) = tauri::WebviewWindowBuilder::new(
+                        app,
+                        &window_label,
+                        tauri::WebviewUrl::App(window_url.into()),
+                    )
+                    .title(&file_name)
+                    .inner_size(1200.0, 800.0)
+                    .min_inner_size(800.0, 600.0)
+                    .build()
+                    {
+                        eprintln!("[Pedaru] Failed to create window: {:?}", e);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Handle window close events - close all child windows when main window is closed
+fn handle_window_close(app: &tauri::AppHandle, label: &str) {
+    eprintln!("[Pedaru] CloseRequested event for window: {}", label);
+    if label == "main" {
+        eprintln!("[Pedaru] Main window closing, closing all child windows");
+        for (win_label, window) in app.webview_windows() {
+            eprintln!("[Pedaru] Found window: {}", win_label);
+            if win_label != "main" {
+                eprintln!("[Pedaru] Closing window: {}", win_label);
+                let _ = window.close();
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Application Entry Point
+// ============================================================================
 
 /// Main application entry point
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -607,141 +719,22 @@ pub fn run() {
             Ok(())
         })
         .on_menu_event(|app, event| {
-            let id = event.id().0.as_str();
-            match id {
-                "reset_all_data" => {
-                    // Emit event to frontend to show confirmation dialog
-                    app.emit("reset-all-data-requested", ()).ok();
-                }
-                "export_session_data" => {
-                    // Emit event to frontend to handle export
-                    app.emit("export-session-data-requested", ()).ok();
-                }
-                "import_session_data" => {
-                    // Emit event to frontend to handle import
-                    app.emit("import-session-data-requested", ()).ok();
-                }
-                "open_file" => {
-                    // Emit event to frontend to open file dialog
-                    app.emit("menu-open-file-requested", ()).ok();
-                }
-                id if id.starts_with("open-recent-") => {
-                    // Extract file path from base64-encoded menu ID
-                    if let Some(file_path) = decode_file_path_from_menu_id(id) {
-                        app.emit("menu-open-recent-selected", file_path).ok();
-                    }
-                }
-                "zoom_in" => {
-                    app.emit("menu-zoom-in", ()).ok();
-                }
-                "zoom_out" => {
-                    app.emit("menu-zoom-out", ()).ok();
-                }
-                "zoom_reset" => {
-                    app.emit("menu-zoom-reset", ()).ok();
-                }
-                "toggle_two_column" => {
-                    app.emit("menu-toggle-two-column", ()).ok();
-                }
-                "toggle_header" => {
-                    app.emit("menu-toggle-header", ()).ok();
-                }
-                "open_settings" => {
-                    app.emit("menu-open-settings", ()).ok();
-                }
-                _ => {}
-            }
+            handle_menu_event(app, event.id().0.as_str());
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app, event| {
-            match &event {
-                // Handle macOS file open events (when file is opened while app is already running)
-                // Each PDF opens in its own independent window (like Preview app)
-                #[cfg(target_os = "macos")]
-                tauri::RunEvent::Opened { urls } => {
-                    eprintln!("[Pedaru] Received Opened event with {} urls", urls.len());
-
-                    for url in urls {
-                        eprintln!("[Pedaru] URL: {:?}", url);
-                        if let Ok(path) = url.to_file_path() {
-                            let path_str = path.to_string_lossy().to_string();
-                            eprintln!("[Pedaru] File path: {}", path_str);
-                            if path_str.to_lowercase().ends_with(".pdf") {
-                                // Check if this is the initial startup (OPENED_VIA_EVENT is false)
-                                // If so, store in PENDING_FILE for main window to load
-                                // If app is already running, create a new window
-                                let was_already_opened =
-                                    OPENED_VIA_EVENT.swap(true, Ordering::SeqCst);
-
-                                if !was_already_opened {
-                                    // First file open during startup - let main window handle it
-                                    eprintln!(
-                                        "[Pedaru] Initial startup, storing in PENDING_FILE: {}",
-                                        path_str
-                                    );
-                                    let pending = get_pending_file();
-                                    *pending.lock().expect(
-                                        "PENDING_FILE mutex poisoned - previous thread panicked",
-                                    ) = Some(path_str);
-                                } else {
-                                    // App is already running - create a new independent window
-                                    let encoded_path = urlencoding::encode(&path_str).into_owned();
-                                    let window_url = format!("/?openFile={}", encoded_path);
-                                    let window_label = format!(
-                                        "pdf-{}",
-                                        std::time::SystemTime::now()
-                                            .duration_since(std::time::UNIX_EPOCH)
-                                            .unwrap_or_default()
-                                            .as_millis()
-                                    );
-
-                                    eprintln!(
-                                        "[Pedaru] Creating new window: {} with URL: {}",
-                                        window_label, window_url
-                                    );
-
-                                    let file_name = path
-                                        .file_name()
-                                        .map(|n| n.to_string_lossy().to_string())
-                                        .unwrap_or_else(|| "PDF".to_string());
-
-                                    if let Err(e) = tauri::WebviewWindowBuilder::new(
-                                        app,
-                                        &window_label,
-                                        tauri::WebviewUrl::App(window_url.into()),
-                                    )
-                                    .title(&file_name)
-                                    .inner_size(1200.0, 800.0)
-                                    .min_inner_size(800.0, 600.0)
-                                    .build()
-                                    {
-                                        eprintln!("[Pedaru] Failed to create window: {:?}", e);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                // Close all child windows when main window is closed
-                tauri::RunEvent::WindowEvent {
-                    label,
-                    event: tauri::WindowEvent::CloseRequested { .. },
-                    ..
-                } => {
-                    eprintln!("[Pedaru] CloseRequested event for window: {}", label);
-                    if label == "main" {
-                        eprintln!("[Pedaru] Main window closing, closing all child windows");
-                        for (win_label, window) in app.webview_windows() {
-                            eprintln!("[Pedaru] Found window: {}", win_label);
-                            if win_label != "main" {
-                                eprintln!("[Pedaru] Closing window: {}", win_label);
-                                let _ = window.close();
-                            }
-                        }
-                    }
-                }
-                _ => {}
+        .run(|app, event| match &event {
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Opened { urls } => {
+                handle_opened_event(app, urls);
             }
+            tauri::RunEvent::WindowEvent {
+                label,
+                event: tauri::WindowEvent::CloseRequested { .. },
+                ..
+            } => {
+                handle_window_close(app, label);
+            }
+            _ => {}
         });
 }

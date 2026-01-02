@@ -5,6 +5,21 @@
 
 use encoding_rs::SHIFT_JIS;
 
+// ============================================================================
+// Constants
+// ============================================================================
+
+/// List of Japanese encodings to try when decoding PDF strings
+const JAPANESE_ENCODINGS: &[(&encoding_rs::Encoding, &str)] = &[
+    (SHIFT_JIS, "Shift-JIS"),
+    (encoding_rs::EUC_JP, "EUC-JP"),
+    (encoding_rs::ISO_2022_JP, "ISO-2022-JP"),
+];
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
 /// Check if bytes represent a UTF-16BE encoded string (with BOM)
 ///
 /// UTF-16BE strings in PDF start with the byte order mark (BOM) 0xFE 0xFF.
@@ -50,6 +65,94 @@ pub fn decode_utf16be_or_utf8(bytes: &[u8]) -> Option<String> {
     }
 }
 
+/// Check if a character is a valid Japanese character
+///
+/// Returns true for hiragana, katakana, and common CJK ideographs.
+#[inline]
+fn is_japanese_char(c: char) -> bool {
+    ('\u{3040}'..='\u{309F}').contains(&c) ||  // Hiragana
+    ('\u{30A0}'..='\u{30FF}').contains(&c) ||  // Katakana
+    ('\u{4E00}'..='\u{9FFF}').contains(&c) ||  // CJK Unified Ideographs
+    ('\u{3400}'..='\u{4DBF}').contains(&c) // CJK Extension A
+}
+
+/// Decode bytes using Japanese encodings with scoring algorithm
+///
+/// Tries multiple Japanese encodings and selects the best result based on:
+/// - Number of valid Japanese characters (positive score)
+/// - Number of replacement characters (negative score)
+/// - Number of control characters (negative score)
+///
+/// Returns the best decoded string, or None if no encoding worked.
+fn try_japanese_encodings_with_scoring(bytes: &[u8], debug: bool) -> Option<String> {
+    let mut best_result: Option<String> = None;
+    let mut best_score = 0i32;
+
+    for (encoding, name) in JAPANESE_ENCODINGS {
+        let (decoded, _, had_errors) = encoding.decode(bytes);
+        let decoded_str = decoded.into_owned();
+
+        // Score the result: penalize replacement characters and control characters
+        let replacement_count = decoded_str.chars().filter(|&c| c == '\u{FFFD}').count();
+        let control_count = decoded_str
+            .chars()
+            .filter(|&c| c.is_control() && c != '\n' && c != '\r' && c != '\t')
+            .count();
+        let valid_japanese = decoded_str.chars().filter(|&c| is_japanese_char(c)).count() as i32;
+
+        let score =
+            valid_japanese * 10 - (replacement_count as i32 * 100) - (control_count as i32 * 50);
+
+        if debug {
+            eprintln!(
+                "[Pedaru] Trying {}: had_errors={}, replacement={}, control={}, japanese={}, score={}, result={:?}",
+                name,
+                had_errors,
+                replacement_count,
+                control_count,
+                valid_japanese,
+                score,
+                decoded_str
+            );
+        }
+
+        if !had_errors && replacement_count == 0 && (best_result.is_none() || score > best_score) {
+            best_result = Some(decoded_str);
+            best_score = score;
+        }
+    }
+
+    best_result
+}
+
+/// Try Japanese encodings and return first successful decode
+///
+/// Simpler version without scoring - returns the first encoding that
+/// decodes without errors or replacement characters.
+fn try_japanese_encodings_simple(bytes: &[u8]) -> Option<String> {
+    for (encoding, _name) in JAPANESE_ENCODINGS {
+        let (decoded, _, had_errors) = encoding.decode(bytes);
+        let decoded_str = decoded.into_owned();
+        let replacement_count = decoded_str.chars().filter(|&c| c == '\u{FFFD}').count();
+        if !had_errors && replacement_count == 0 {
+            return Some(decoded_str);
+        }
+    }
+    None
+}
+
+/// Decode bytes to Latin-1/PDFDocEncoding
+///
+/// This is the fallback encoding when no other encoding works.
+#[inline]
+fn decode_latin1(bytes: &[u8]) -> String {
+    bytes.iter().map(|&b| b as char).collect()
+}
+
+// ============================================================================
+// Main Decoding Functions
+// ============================================================================
+
 /// Decode a PDF string object to a Rust String
 ///
 /// PDF strings can be encoded in various formats:
@@ -75,78 +178,25 @@ pub fn decode_pdf_string(obj: &lopdf::Object) -> Option<String> {
                 eprintln!("[Pedaru] Detected UTF-16BE");
                 let result = decode_utf16be(bytes);
                 eprintln!("[Pedaru] UTF-16BE result: {:?}", result);
-                result
-            } else if let Ok(s) = String::from_utf8(bytes.clone()) {
-                // Try UTF-8
-                eprintln!("[Pedaru] Detected UTF-8: {:?}", s);
-                Some(s)
-            } else {
-                // Try multiple Japanese encodings and pick the best result
-                let encodings: &[(&encoding_rs::Encoding, &str)] = &[
-                    (SHIFT_JIS, "Shift-JIS"),
-                    (encoding_rs::EUC_JP, "EUC-JP"),
-                    (encoding_rs::ISO_2022_JP, "ISO-2022-JP"),
-                ];
-
-                let mut best_result: Option<String> = None;
-                let mut best_score = 0i32;
-
-                for (encoding, name) in encodings {
-                    let (decoded, _, had_errors) = encoding.decode(bytes);
-                    let decoded_str = decoded.into_owned();
-
-                    // Score the result: penalize replacement characters and control characters
-                    let replacement_count =
-                        decoded_str.chars().filter(|&c| c == '\u{FFFD}').count();
-                    let control_count = decoded_str
-                        .chars()
-                        .filter(|&c| c.is_control() && c != '\n' && c != '\r' && c != '\t')
-                        .count();
-                    let valid_japanese = decoded_str
-                        .chars()
-                        .filter(|&c| {
-                            // Count valid Japanese characters (hiragana, katakana, kanji)
-                            ('\u{3040}'..='\u{309F}').contains(&c) ||  // Hiragana
-                        ('\u{30A0}'..='\u{30FF}').contains(&c) ||  // Katakana
-                        ('\u{4E00}'..='\u{9FFF}').contains(&c) ||  // CJK Unified Ideographs
-                        ('\u{3400}'..='\u{4DBF}').contains(&c) // CJK Extension A
-                        })
-                        .count() as i32;
-
-                    let score = valid_japanese * 10
-                        - (replacement_count as i32 * 100)
-                        - (control_count as i32 * 50);
-
-                    eprintln!(
-                        "[Pedaru] Trying {}: had_errors={}, replacement={}, control={}, japanese={}, score={}, result={:?}",
-                        name,
-                        had_errors,
-                        replacement_count,
-                        control_count,
-                        valid_japanese,
-                        score,
-                        decoded_str
-                    );
-
-                    if !had_errors
-                        && replacement_count == 0
-                        && (best_result.is_none() || score > best_score)
-                    {
-                        best_result = Some(decoded_str);
-                        best_score = score;
-                    }
-                }
-
-                if let Some(result) = best_result {
-                    eprintln!("[Pedaru] Best encoding result: {:?}", result);
-                    Some(result)
-                } else {
-                    // Fall back to Latin-1/PDFDocEncoding
-                    let result: String = bytes.iter().map(|&b| b as char).collect();
-                    eprintln!("[Pedaru] Fallback to Latin-1: {:?}", result);
-                    Some(result)
-                }
+                return result;
             }
+
+            // Try UTF-8
+            if let Ok(s) = String::from_utf8(bytes.clone()) {
+                eprintln!("[Pedaru] Detected UTF-8: {:?}", s);
+                return Some(s);
+            }
+
+            // Try Japanese encodings with scoring
+            if let Some(result) = try_japanese_encodings_with_scoring(bytes, true) {
+                eprintln!("[Pedaru] Best encoding result: {:?}", result);
+                return Some(result);
+            }
+
+            // Fall back to Latin-1/PDFDocEncoding
+            let result = decode_latin1(bytes);
+            eprintln!("[Pedaru] Fallback to Latin-1: {:?}", result);
+            Some(result)
         }
         _ => None,
     }
@@ -159,30 +209,23 @@ pub fn decode_pdf_string(obj: &lopdf::Object) -> Option<String> {
 pub fn decode_name_string(obj: &lopdf::Object) -> Option<String> {
     match obj {
         lopdf::Object::String(bytes, _) => {
+            // Try UTF-16BE first
             if is_utf16be(bytes) {
-                decode_utf16be(bytes)
-            } else if let Ok(s) = String::from_utf8(bytes.clone()) {
-                Some(s)
-            } else {
-                // Try multiple Japanese encodings
-                let encodings: &[(&encoding_rs::Encoding, &str)] = &[
-                    (SHIFT_JIS, "Shift-JIS"),
-                    (encoding_rs::EUC_JP, "EUC-JP"),
-                    (encoding_rs::ISO_2022_JP, "ISO-2022-JP"),
-                ];
-
-                for (encoding, _name) in encodings {
-                    let (decoded, _, had_errors) = encoding.decode(bytes);
-                    let decoded_str = decoded.into_owned();
-                    let replacement_count =
-                        decoded_str.chars().filter(|&c| c == '\u{FFFD}').count();
-                    if !had_errors && replacement_count == 0 {
-                        return Some(decoded_str);
-                    }
-                }
-                // Fallback to Latin-1
-                Some(bytes.iter().map(|&b| b as char).collect())
+                return decode_utf16be(bytes);
             }
+
+            // Try UTF-8
+            if let Ok(s) = String::from_utf8(bytes.clone()) {
+                return Some(s);
+            }
+
+            // Try Japanese encodings (simple, without scoring)
+            if let Some(result) = try_japanese_encodings_simple(bytes) {
+                return Some(result);
+            }
+
+            // Fallback to Latin-1
+            Some(decode_latin1(bytes))
         }
         lopdf::Object::Name(bytes) => Some(String::from_utf8_lossy(bytes).to_string()),
         _ => None,

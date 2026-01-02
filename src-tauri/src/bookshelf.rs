@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use tauri::{AppHandle, Manager};
 
-use crate::db::{now_timestamp, open_db};
+use crate::db::{ToDbError, now_timestamp, open_db};
 use crate::error::{DatabaseError, IoError, PedaruError};
 
 // ============================================================================
@@ -28,17 +28,12 @@ pub struct StoredFolder {
 
 /// Bookshelf item from database
 /// Source type for bookshelf items
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceType {
+    #[default]
     GoogleDrive,
     Local,
-}
-
-impl Default for SourceType {
-    fn default() -> Self {
-        Self::GoogleDrive
-    }
 }
 
 impl std::fmt::Display for SourceType {
@@ -179,7 +174,7 @@ pub fn ensure_schema(app: &AppHandle) -> Result<(), PedaruError> {
     if !has_last_opened {
         eprintln!("[Pedaru] Adding last_opened column to bookshelf table");
         conn.execute("ALTER TABLE bookshelf ADD COLUMN last_opened INTEGER", [])
-            .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+            .db_err()?;
     }
 
     // Check and add is_favorite column if missing
@@ -194,8 +189,11 @@ pub fn ensure_schema(app: &AppHandle) -> Result<(), PedaruError> {
 
     if !has_is_favorite {
         eprintln!("[Pedaru] Adding is_favorite column to bookshelf table");
-        conn.execute("ALTER TABLE bookshelf ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0", [])
-            .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+        conn.execute(
+            "ALTER TABLE bookshelf ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .db_err()?;
     }
 
     // Cleanup zombie local files
@@ -233,7 +231,7 @@ pub fn add_sync_folder(
            is_active = 1",
         rusqlite::params![folder_id, folder_name, now_timestamp()],
     )
-    .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+    .db_err()?;
     Ok(())
 }
 
@@ -244,7 +242,7 @@ pub fn remove_sync_folder(app: &AppHandle, folder_id: &str) -> Result<(), Pedaru
         "UPDATE drive_folders SET is_active = 0 WHERE folder_id = ?1",
         [folder_id],
     )
-    .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+    .db_err()?;
     Ok(())
 }
 
@@ -258,7 +256,7 @@ pub fn get_sync_folders(app: &AppHandle) -> Result<Vec<StoredFolder>, PedaruErro
              WHERE is_active = 1
              ORDER BY folder_name",
         )
-        .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+        .db_err()?;
 
     let folders = stmt
         .query_map([], |row| {
@@ -269,7 +267,7 @@ pub fn get_sync_folders(app: &AppHandle) -> Result<Vec<StoredFolder>, PedaruErro
                 last_synced: row.get(3)?,
             })
         })
-        .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?
+        .db_err()?
         .filter_map(|r| r.ok())
         .collect();
 
@@ -283,7 +281,7 @@ pub fn update_folder_sync_time(app: &AppHandle, folder_id: &str) -> Result<(), P
         "UPDATE drive_folders SET last_synced = ?1 WHERE folder_id = ?2",
         rusqlite::params![now_timestamp(), folder_id],
     )
-    .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+    .db_err()?;
     Ok(())
 }
 
@@ -325,7 +323,7 @@ pub fn upsert_item(
             now
         ],
     )
-    .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+    .db_err()?;
 
     Ok(())
 }
@@ -342,7 +340,7 @@ pub fn get_items(app: &AppHandle) -> Result<Vec<BookshelfItem>, PedaruError> {
              FROM bookshelf
              ORDER BY last_opened IS NULL, last_opened DESC, file_name ASC",
         )
-        .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+        .db_err()?;
 
     let items = stmt
         .query_map([], |row| {
@@ -358,14 +356,16 @@ pub fn get_items(app: &AppHandle) -> Result<Vec<BookshelfItem>, PedaruError> {
                 download_progress: row.get(8)?,
                 pdf_title: row.get(9)?,
                 pdf_author: row.get(10)?,
-                source_type: row.get::<_, String>(11).unwrap_or_else(|_| "google_drive".to_string()),
+                source_type: row
+                    .get::<_, String>(11)
+                    .unwrap_or_else(|_| "google_drive".to_string()),
                 original_path: row.get(12)?,
                 created_at: row.get(13)?,
                 is_favorite: row.get::<_, i64>(14).unwrap_or(0) != 0,
                 last_opened: row.get(15)?,
             })
         })
-        .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?
+        .db_err()?
         .filter_map(|r| r.ok())
         .collect();
 
@@ -390,7 +390,7 @@ pub fn update_download_status(
          WHERE drive_file_id = ?5",
         rusqlite::params![status, progress, local_path, now_timestamp(), drive_file_id],
     )
-    .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+    .db_err()?;
     Ok(())
 }
 
@@ -405,7 +405,7 @@ pub fn update_thumbnail(
         "UPDATE bookshelf SET thumbnail_data = ?1, updated_at = ?2 WHERE drive_file_id = ?3",
         rusqlite::params![thumbnail_data, now_timestamp(), drive_file_id],
     )
-    .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+    .db_err()?;
     Ok(())
 }
 
@@ -421,7 +421,7 @@ pub fn update_pdf_metadata(
         "UPDATE bookshelf SET pdf_title = ?1, pdf_author = ?2, updated_at = ?3 WHERE drive_file_id = ?4",
         rusqlite::params![pdf_title, pdf_author, now_timestamp(), drive_file_id],
     )
-    .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+    .db_err()?;
     Ok(())
 }
 
@@ -462,7 +462,7 @@ pub fn delete_local_copy(app: &AppHandle, drive_file_id: &str) -> Result<(), Ped
          WHERE drive_file_id = ?2",
         rusqlite::params![now_timestamp(), drive_file_id],
     )
-    .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+    .db_err()?;
 
     Ok(())
 }
@@ -482,7 +482,7 @@ pub fn reset_download_status(app: &AppHandle, drive_file_id: &str) -> Result<(),
          WHERE drive_file_id = ?2",
         rusqlite::params![now_timestamp(), drive_file_id],
     )
-    .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+    .db_err()?;
 
     Ok(())
 }
@@ -494,7 +494,7 @@ pub fn reset_stale_downloads(app: &AppHandle) -> Result<(), PedaruError> {
         "UPDATE bookshelf SET download_status = 'pending', download_progress = 0 WHERE download_status = 'downloading'",
         [],
     )
-    .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+    .db_err()?;
     Ok(())
 }
 
@@ -510,11 +510,19 @@ pub fn verify_local_files(app: &AppHandle) -> Result<i32, PedaruError> {
             "SELECT id, drive_file_id, local_path, source_type FROM bookshelf
              WHERE download_status = 'completed' AND local_path IS NOT NULL",
         )
-        .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+        .db_err()?;
 
     let items: Vec<(i64, String, String, String)> = stmt
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get::<_, String>(3).unwrap_or_else(|_| "google_drive".to_string()))))
-        .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?
+        .query_map([], |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get::<_, String>(3)
+                    .unwrap_or_else(|_| "google_drive".to_string()),
+            ))
+        })
+        .db_err()?
         .filter_map(|r| r.ok())
         .collect();
 
@@ -525,12 +533,20 @@ pub fn verify_local_files(app: &AppHandle) -> Result<i32, PedaruError> {
         if !path.exists() {
             if source_type == "local" {
                 // For local files, delete the database entry entirely
-                eprintln!("[Pedaru] Local file missing, deleting entry: {}", local_path);
+                eprintln!(
+                    "[Pedaru] Local file missing, deleting entry: {}",
+                    local_path
+                );
                 conn.execute("DELETE FROM bookshelf WHERE id = ?1", [id])
-                    .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+                    .map_err(|e| {
+                        PedaruError::Database(DatabaseError::QueryFailed(e.to_string()))
+                    })?;
             } else {
                 // For cloud files, reset to pending so they can be re-downloaded
-                eprintln!("[Pedaru] Cloud file missing, resetting status: {}", local_path);
+                eprintln!(
+                    "[Pedaru] Cloud file missing, resetting status: {}",
+                    local_path
+                );
                 conn.execute(
                     "UPDATE bookshelf SET
                        download_status = 'pending',
@@ -541,14 +557,17 @@ pub fn verify_local_files(app: &AppHandle) -> Result<i32, PedaruError> {
                      WHERE drive_file_id = ?2",
                     rusqlite::params![now_timestamp(), drive_file_id],
                 )
-                .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+                .db_err()?;
             }
             reset_count += 1;
         }
     }
 
     if reset_count > 0 {
-        eprintln!("[Pedaru] Processed {} items with missing files", reset_count);
+        eprintln!(
+            "[Pedaru] Processed {} items with missing files",
+            reset_count
+        );
     }
 
     Ok(reset_count)
@@ -621,9 +640,7 @@ pub fn import_local_file(app: &AppHandle, source_path: &str) -> Result<Bookshelf
     }
 
     // Get file size
-    let file_size = std::fs::metadata(source)
-        .map(|m| m.len() as i64)
-        .ok();
+    let file_size = std::fs::metadata(source).map(|m| m.len() as i64).ok();
 
     // Copy to downloads directory
     let downloads_dir = get_downloads_dir(app)?;
@@ -631,7 +648,10 @@ pub fn import_local_file(app: &AppHandle, source_path: &str) -> Result<Bookshelf
 
     // Handle filename conflicts by adding a number suffix
     let final_dest = if dest_path.exists() {
-        let stem = source.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
+        let stem = source
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("file");
         let mut counter = 1;
         loop {
             let new_name = format!("{}_{}.pdf", stem, counter);
@@ -666,7 +686,7 @@ pub fn import_local_file(app: &AppHandle, source_path: &str) -> Result<Bookshelf
         ) VALUES (?1, ?2, ?3, ?4, 'application/pdf', ?5, 'completed', 100.0, 'local', ?6, ?7, ?8)",
         rusqlite::params![
             local_id,
-            "",  // No folder ID for local files
+            "", // No folder ID for local files
             file_name,
             file_size,
             local_path,
@@ -675,7 +695,7 @@ pub fn import_local_file(app: &AppHandle, source_path: &str) -> Result<Bookshelf
             now
         ],
     )
-    .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+    .db_err()?;
 
     let id = conn.last_insert_rowid();
 
@@ -700,7 +720,10 @@ pub fn import_local_file(app: &AppHandle, source_path: &str) -> Result<Bookshelf
 }
 
 /// Import multiple PDF files from a directory
-pub fn import_local_directory(app: &AppHandle, dir_path: &str) -> Result<ImportResult, PedaruError> {
+pub fn import_local_directory(
+    app: &AppHandle,
+    dir_path: &str,
+) -> Result<ImportResult, PedaruError> {
     let dir = std::path::Path::new(dir_path);
 
     if !dir.exists() || !dir.is_dir() {
@@ -724,20 +747,19 @@ pub fn import_local_directory(app: &AppHandle, dir_path: &str) -> Result<ImportR
 
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.is_file() {
-            if let Some(ext) = path.extension() {
-                if ext.to_str().map(|s| s.to_lowercase()) == Some("pdf".to_string()) {
-                    match import_local_file(app, path.to_string_lossy().as_ref()) {
-                        Ok(_) => imported_count += 1,
-                        Err(e) => {
-                            let error_str = format!("{:?}", e);
-                            if error_str.contains("already imported") {
-                                skipped_count += 1;
-                            } else {
-                                eprintln!("[Pedaru] Failed to import {:?}: {:?}", path, e);
-                                error_count += 1;
-                            }
-                        }
+        if path.is_file()
+            && let Some(ext) = path.extension()
+            && ext.to_str().map(|s| s.to_lowercase()) == Some("pdf".to_string())
+        {
+            match import_local_file(app, path.to_string_lossy().as_ref()) {
+                Ok(_) => imported_count += 1,
+                Err(e) => {
+                    let error_str = format!("{:?}", e);
+                    if error_str.contains("already imported") {
+                        skipped_count += 1;
+                    } else {
+                        eprintln!("[Pedaru] Failed to import {:?}: {:?}", path, e);
+                        error_count += 1;
                     }
                 }
             }
@@ -775,7 +797,7 @@ pub fn delete_local_item(app: &AppHandle, item_id: i64) -> Result<(), PedaruErro
 
     // Delete from database
     conn.execute("DELETE FROM bookshelf WHERE id = ?1", [item_id])
-        .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+        .db_err()?;
 
     Ok(())
 }
@@ -791,7 +813,7 @@ pub fn toggle_favorite(app: &AppHandle, item_id: i64) -> Result<bool, PedaruErro
             [item_id],
             |row| row.get(0),
         )
-        .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+        .db_err()?;
 
     let new_status = if current == 0 { 1 } else { 0 };
 
@@ -799,7 +821,7 @@ pub fn toggle_favorite(app: &AppHandle, item_id: i64) -> Result<bool, PedaruErro
         "UPDATE bookshelf SET is_favorite = ?1 WHERE id = ?2",
         rusqlite::params![new_status, item_id],
     )
-    .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+    .db_err()?;
 
     Ok(new_status == 1)
 }
@@ -813,7 +835,47 @@ pub fn update_last_opened(app: &AppHandle, local_path: &str) -> Result<(), Pedar
         "UPDATE bookshelf SET last_opened = ?1, updated_at = ?1 WHERE local_path = ?2",
         rusqlite::params![now, local_path],
     )
-    .map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))?;
+    .db_err()?;
 
+    Ok(())
+}
+
+// ============================================================================
+// PDF Metadata Extraction
+// ============================================================================
+
+/// Extract PDF metadata and save it to the bookshelf database
+///
+/// This function extracts title and author from a PDF file and updates
+/// the corresponding bookshelf item. It's used after downloading or
+/// importing a PDF to populate metadata fields.
+///
+/// # Arguments
+/// * `app` - Tauri AppHandle for database access
+/// * `file_path` - Path to the PDF file
+/// * `item_id` - The drive_file_id of the bookshelf item to update
+pub fn extract_and_save_pdf_metadata(
+    app: &AppHandle,
+    file_path: &str,
+    item_id: &str,
+) -> Result<(), PedaruError> {
+    // Extract PDF info - ignore errors as metadata is optional
+    if let Ok(pdf_info) = crate::get_pdf_info_impl(file_path) {
+        let title = pdf_info
+            .title
+            .as_ref()
+            .filter(|t| !t.trim().is_empty())
+            .map(|s| s.as_str());
+        let author = pdf_info
+            .author
+            .as_ref()
+            .filter(|a| !a.trim().is_empty())
+            .map(|s| s.as_str());
+
+        // Only update if we have metadata to save
+        if title.is_some() || author.is_some() {
+            update_pdf_metadata(app, item_id, title, author)?;
+        }
+    }
     Ok(())
 }

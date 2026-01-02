@@ -13,6 +13,29 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Manager;
 
+// ============================================================================
+// Error Handling Helpers
+// ============================================================================
+
+/// Trait for converting rusqlite errors to PedaruError
+///
+/// This trait provides a more ergonomic way to convert database errors,
+/// reducing boilerplate in database operations.
+///
+/// # Example
+/// ```ignore
+/// conn.execute("...", []).db_err()?
+/// ```
+pub trait ToDbError<T> {
+    fn db_err(self) -> Result<T, PedaruError>;
+}
+
+impl<T> ToDbError<T> for Result<T, rusqlite::Error> {
+    fn db_err(self) -> Result<T, PedaruError> {
+        self.map_err(|e| PedaruError::Database(DatabaseError::QueryFailed(e.to_string())))
+    }
+}
+
 /// Get the path to the SQLite database
 ///
 /// Uses app_config_dir to match tauri-plugin-sql's database location:
