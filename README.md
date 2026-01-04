@@ -16,6 +16,14 @@ A cross-platform desktop PDF reader with Gemini translation
 
 ## How to install
 
+Download the latest release from the [Releases page](https://github.com/togatoga/pedaru/releases).
+
+- **macOS**: Download `.dmg` file
+- **Linux**: Download `.deb` or `.AppImage` file
+- **Windows**: Download `.msi` file
+
+### Build from source
+
 ```bash
 git clone https://github.com/togatoga/pedaru.git
 cd pedaru
