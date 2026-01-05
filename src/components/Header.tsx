@@ -18,8 +18,7 @@ import {
   Bookmark,
   Library,
 } from 'lucide-react';
-import { platform } from '@tauri-apps/plugin-os';
-import { useState, useEffect } from 'react';
+import { usePlatform } from '@/contexts/PlatformContext';
 import type { HeaderProps } from '@/types/components';
 
 export default function Header({
@@ -57,20 +56,7 @@ export default function Header({
   onSearchNext,
   onCloseAllWindows,
 }: HeaderProps) {
-  const [platformName, setPlatformName] = useState<string>('');
-
-  useEffect(() => {
-    async function checkPlatform() {
-      try {
-        const p = await platform();
-        setPlatformName(p);
-      } catch (e) {
-        console.error('Failed to get platform:', e);
-      }
-    }
-    checkPlatform();
-  }, []);
-
+  const { isMacOS } = usePlatform();
   const isPdfLoaded = totalPages > 0;
 
   return (
@@ -78,7 +64,7 @@ export default function Header({
       {/* Left section */}
       <div className="flex items-center gap-3">
         {/* Space for traffic light buttons on macOS */}
-        {platformName === 'macos' && <div className="w-14" />}
+        {isMacOS && <div className="w-14" />}
         <button
           onClick={onOpenFile}
           disabled={isLoading}

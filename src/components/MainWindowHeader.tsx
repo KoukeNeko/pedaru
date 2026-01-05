@@ -1,7 +1,6 @@
-import { useState, useEffect } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { ViewMode, Tab } from '@/types';
-import { platform } from '@tauri-apps/plugin-os';
+import { usePlatform } from '@/contexts/PlatformContext';
 import Header from './Header';
 import { TabBar } from './TabBar';
 import TitleBar from './TitleBar';
@@ -139,19 +138,7 @@ export default function MainWindowHeader({
   setTabs,
   setActiveTabId,
 }: MainWindowHeaderProps) {
-  const [platformName, setPlatformName] = useState<string>('');
-
-  useEffect(() => {
-    async function checkPlatform() {
-      try {
-        const p = await platform();
-        setPlatformName(p);
-      } catch (e) {
-        console.error('Failed to get platform:', e);
-      }
-    }
-    checkPlatform();
-  }, []);
+  const { isWindows, isLinux } = usePlatform();
 
   if (!showHeader) {
     return null;
@@ -159,7 +146,7 @@ export default function MainWindowHeader({
 
   return (
     <>
-      {(platformName === 'windows' || platformName === 'linux') && (
+      {(isWindows || isLinux) && (
         <TitleBar
           onOpenFile={onOpenFile}
           onZoomIn={onZoomIn}
