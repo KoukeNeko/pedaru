@@ -1,9 +1,10 @@
-'use client';
-
+import { useState, useEffect } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { ViewMode, Tab } from '@/types';
+import { platform } from '@tauri-apps/plugin-os';
 import Header from './Header';
 import { TabBar } from './TabBar';
+import TitleBar from './TitleBar';
 
 export interface MainWindowHeaderProps {
   // Visibility
@@ -43,6 +44,19 @@ export interface MainWindowHeaderProps {
   onSearchPrev: () => void;
   onSearchNext: () => void;
   onCloseAllWindows: () => void;
+  // New handlers for TitleBar
+  onZoomReset: () => void;
+  onFirstPage: () => void;
+  onLastPage: () => void;
+  onToggleTwoColumn: () => void;
+  onToggleHeader: () => void;
+  onNewTab: () => void;
+  onNextTab: () => void;
+  onPrevTab: () => void;
+  onNewWindow: () => void;
+  onOpenSettings: () => void;
+  onFocusSearch: () => void;
+  onToggleCurrentBookmark: () => void;
   // TabBar props
   tabs: Tab[];
   activeTabId: number | null;
@@ -99,6 +113,18 @@ export default function MainWindowHeader({
   onSearchPrev,
   onSearchNext,
   onCloseAllWindows,
+  onZoomReset,
+  onFirstPage,
+  onLastPage,
+  onToggleTwoColumn,
+  onToggleHeader,
+  onNewTab,
+  onNextTab,
+  onPrevTab,
+  onNewWindow,
+  onOpenSettings,
+  onFocusSearch,
+  onToggleCurrentBookmark,
   // TabBar props
   tabs,
   activeTabId,
@@ -113,12 +139,49 @@ export default function MainWindowHeader({
   setTabs,
   setActiveTabId,
 }: MainWindowHeaderProps) {
+  const [platformName, setPlatformName] = useState<string>('');
+
+  useEffect(() => {
+    async function checkPlatform() {
+      try {
+        const p = await platform();
+        setPlatformName(p);
+      } catch (e) {
+        console.error('Failed to get platform:', e);
+      }
+    }
+    checkPlatform();
+  }, []);
+
   if (!showHeader) {
     return null;
   }
 
   return (
     <>
+      {platformName === 'windows' && (
+        <TitleBar
+          onOpenFile={onOpenFile}
+          onZoomIn={onZoomIn}
+          onZoomOut={onZoomOut}
+          onZoomReset={onZoomReset}
+          onPrevPage={onPrevPage}
+          onNextPage={onNextPage}
+          onFirstPage={onFirstPage}
+          onLastPage={onLastPage}
+          onCloseAllWindows={onCloseAllWindows}
+          onToggleTwoColumn={onToggleTwoColumn}
+          onToggleHeader={onToggleHeader}
+          onNewTab={onNewTab}
+          onCloseTab={closeTab}
+          onNextTab={onNextTab}
+          onPrevTab={onPrevTab}
+          onNewWindow={onNewWindow}
+          onOpenSettings={onOpenSettings}
+          onSearch={onFocusSearch}
+          onToggleBookmark={onToggleCurrentBookmark}
+        />
+      )}
       <Header
         fileName={fileName}
         pdfTitle={pdfTitle}

@@ -854,6 +854,14 @@ pub fn run() {
             let menu = build_app_menu(app.handle()).map_err(|e| e.into_tauri_error())?;
             app.set_menu(menu)?;
 
+            #[cfg(target_os = "windows")]
+            {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_decorations(false);
+                    let _ = window.set_shadow(true);
+                }
+            }
+
             // Reset any stale "downloading" statuses from previous sessions
             if let Err(e) = bookshelf::reset_stale_downloads(app.handle()) {
                 eprintln!("[Pedaru] Failed to reset stale downloads: {}", e);
