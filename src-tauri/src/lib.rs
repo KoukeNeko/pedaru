@@ -850,11 +850,23 @@ pub fn run() {
             get_recent_files
         ])
         .setup(|app| {
-            // Build and set the initial menu
-            let menu = build_app_menu(app.handle()).map_err(|e| e.into_tauri_error())?;
-            app.set_menu(menu)?;
+            // Build and set the native menu only on macOS
+            // Windows and Linux use custom TitleBar component with integrated menu
+            #[cfg(target_os = "macos")]
+            {
+                let menu = build_app_menu(app.handle()).map_err(|e| e.into_tauri_error())?;
+                app.set_menu(menu)?;
+            }
 
             #[cfg(target_os = "windows")]
+            {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_decorations(false);
+                    let _ = window.set_shadow(true);
+                }
+            }
+
+            #[cfg(target_os = "linux")]
             {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.set_decorations(false);

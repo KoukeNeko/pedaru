@@ -159,7 +159,7 @@ export default function MainWindowHeader({
 
   return (
     <>
-      {platformName === 'windows' && (
+      {(platformName === 'windows' || platformName === 'linux') && (
         <TitleBar
           onOpenFile={onOpenFile}
           onZoomIn={onZoomIn}
